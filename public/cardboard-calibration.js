@@ -13,6 +13,8 @@ window.CardboardCalibration = (() => {
   // Separation that fused correctly on the demo phone and viewer (calibrated 2026-10-24). The 63.9 mm of
   // the lenses converted with PX_PER_MM gave about 400 px, too wide on that phone: it has more CSS px per mm.
   const DEFAULT_SEP_PX = 303;
+  // Zoom that looked best in the same viewer: the full view at 1 did not fit inside the lens.
+  const DEFAULT_ZOOM = 0.7;
 
   const load = () => {
     try {
@@ -42,7 +44,7 @@ window.CardboardCalibration = (() => {
     return {
       sep: clamp(stored.sep ?? Math.min(DEFAULT_SEP_PX, W / 2), W * 0.25, W * 0.75),
       y: clamp(stored.y ?? Math.min(LENS_HEIGHT_MM * PX_PER_MM, H / 2), H * 0.15, H * 0.85),
-      zoom: clamp(stored.zoom ?? 1, 0.5, 1.5),
+      zoom: clamp(stored.zoom ?? DEFAULT_ZOOM, 0.5, 1.5),
     };
   };
 
