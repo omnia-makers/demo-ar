@@ -69,7 +69,7 @@ píxeles por milímetro cambian entre móviles, así que se calibra en cada móv
 1. Abrir `calibrate.html` (enlace *Calibrar gafas*, debajo del botón *Gafas*) y pulsar *Pantalla completa*.
 2. Meter el móvil en las gafas. Debe verse **una sola cruz con un punto rojo a la izquierda y uno azul a la
    derecha** (el rojo solo lo ve el ojo izquierdo y el azul solo el derecho).
-3. Valores por defecto: 303 px de separación y zoom 0,70, los que funcionan en el móvil y las gafas de la demo.
+3. Valores por defecto: 303 px de separación y zoom 0,55, los que funcionan en el móvil y las gafas de la demo.
    Si se ven dos cruces, sacar el móvil y ajustar *Separación* (− si las cruces se separan hacia fuera) hasta
    que se fundan cómodamente; después *Altura* hasta que la cruz quede en el centro de la vista, y *Zoom* si
    la imagen se corta. Un toque en la imagen oculta los controles.

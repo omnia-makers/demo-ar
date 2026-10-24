@@ -14,7 +14,7 @@ window.CardboardCalibration = (() => {
   // the lenses converted with PX_PER_MM gave about 400 px, too wide on that phone: it has more CSS px per mm.
   const DEFAULT_SEP_PX = 303;
   // Zoom that looked best in the same viewer: the full view at 1 did not fit inside the lens.
-  const DEFAULT_ZOOM = 0.7;
+  const DEFAULT_ZOOM = 0.55;
 
   const load = () => {
     try {
