@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calibrar gafas</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <meta name="theme-color" content="#000000" />
+    <script src="cardboard-calibration.js"></script>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #fff;
+                   font: 14px/1.3 system-ui, sans-serif; }
+      canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+      #panel { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; gap: 6px 14px;
+               align-items: center; justify-content: center; padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+               background: rgba(17, 24, 39, 0.92); }
+      #panel[hidden], #rotate[hidden] { display: none; }
+      .group { display: flex; align-items: center; gap: 6px; }
+      .group span { min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+      button { min-width: 40px; height: 36px; padding: 0 12px; border: 0; border-radius: 999px;
+               font: 600 15px/1 system-ui, sans-serif; color: #fff; background: #374151; touch-action: manipulation; }
+      button.primary { background: #2563eb; }
+      #help { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); max-width: 90vw; text-align: center;
+              padding: 6px 12px; border-radius: 8px; background: rgba(17, 24, 39, 0.92); }
+      #rotate { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+                padding: 24px; text-align: center; font-size: 18px; background: #000; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="help">
+      Con las gafas puestas debe verse <b>una sola cruz</b>, con un punto rojo a la izquierda y uno azul a la derecha.
+      Toca la imagen para ocultar o mostrar los controles.
+    </div>
+    <div id="panel">
+      <div class="group">Separación <button data-k="sep" data-d="-2">−</button><span id="sep"></span><button data-k="sep" data-d="2">+</button></div>
+      <div class="group">Altura <button data-k="y" data-d="-2">−</button><span id="y"></span><button data-k="y" data-d="2">+</button></div>
+      <div class="group">Zoom <button data-k="zoom" data-d="-0.05">−</button><span id="zoom"></span><button data-k="zoom" data-d="0.05">+</button></div>
+      <div class="group">
+        <button id="reset">Restablecer</button>
+        <button id="fullscreen">Pantalla completa</button>
+        <button id="demo" class="primary">Probar en la demo</button>
+      </div>
+    </div>
+    <div id="rotate" hidden>Gira el móvil en horizontal para calibrar.</div>
+
+    <script>
+      // Calibration image for the headset mode. Each eye shows a cross, circles and a grid centred on its
+      // lens (CardboardCalibration.eyes). The red dot is only in the left eye and the blue one only in the
+      // right: when the separation matches the lenses the eyes fuse both images into one cross with both dots.
+      (() => {
+        const C = window.CardboardCalibration;
+        const canvas = document.querySelector('#view');
+        const ctx = canvas.getContext('2d');
+        const panel = document.querySelector('#panel');
+        const help = document.querySelector('#help');
+        let values = C.load();
+
+        const draw = () => {
+          const W = window.innerWidth, H = window.innerHeight;
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = Math.round(W * dpr);
+          canvas.height = Math.round(H * dpr);
+          document.querySelector('#rotate').hidden = W > H;
+          const c = C.resolve(W, H, values);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, W, H);
+          C.eyes(W, H, c).forEach(({ cx, cy, clipX, clipW }, eye) => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(clipX, 0, clipW, H);
+            ctx.clip();
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(clipX, 0, clipW, H);
+            const z = c.zoom;
+            // Grid every 20 px, centred on the lens.
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let d = -400; d <= 400; d += 20) {
+              ctx.moveTo(cx + d * z, 0); ctx.lineTo(cx + d * z, H);
+              ctx.moveTo(clipX, cy + d * z); ctx.lineTo(clipX + clipW, cy + d * z);
+            }
+            ctx.stroke();
+            // Concentric circles and cross.
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            for (const r of [30, 70, 120]) {
+              ctx.beginPath();
+              ctx.arc(cx, cy, r * z, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx - 150 * z, cy); ctx.lineTo(cx + 150 * z, cy);
+            ctx.moveTo(cx, cy - 150 * z); ctx.lineTo(cx, cy + 150 * z);
+            ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = `700 ${Math.round(32 * z)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('1', cx + 18 * z, cy - 50 * z);
+            // Eye-only markers.
+            ctx.fillStyle = eye === 0 ? '#ef4444' : '#3b82f6';
+            ctx.beginPath();
+            ctx.arc(cx + (eye === 0 ? -50 : 50) * z, cy, 10 * z, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          });
+          ctx.fillStyle = '#000';
+          ctx.fillRect(W / 2 - 1, 0, 2, H);
+          const mm = (px) => (px / C.PX_PER_MM).toFixed(1);
+          document.querySelector('#sep').textContent = `${Math.round(c.sep)} px (~${mm(c.sep)} mm)`;
+          document.querySelector('#y').textContent = `${Math.round(c.y)} px (~${mm(c.y)} mm)`;
+          document.querySelector('#zoom').textContent = c.zoom.toFixed(2);
+        };
+
+        const change = (k, d) => {
+          const c = C.resolve(window.innerWidth, window.innerHeight, values);
+          c[k] = +(c[k] + d).toFixed(2);
+          values = C.resolve(window.innerWidth, window.innerHeight, c);
+          C.save(values);
+          draw();
+        };
+        // Press and hold repeats.
+        for (const b of document.querySelectorAll('button[data-k]')) {
+          let timer = null;
+          const stop = () => { clearInterval(timer); clearTimeout(timer); timer = null; };
+          b.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            change(b.dataset.k, +b.dataset.d);
+            timer = setTimeout(() => { timer = setInterval(() => change(b.dataset.k, +b.dataset.d), 60); }, 400);
+          });
+          for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+        }
+        document.querySelector('#reset').addEventListener('click', () => { C.clear(); values = {}; draw(); });
+        document.querySelector('#fullscreen').addEventListener('click', async () => {
+          try {
+            await document.documentElement.requestFullscreen();
+            await screen.orientation.lock('landscape');
+          } catch (e) {
+            // Not supported: rotate the phone by hand.
+          }
+        });
+        document.querySelector('#demo').addEventListener('click', () => { location.href = './?cardboard'; });
+        canvas.addEventListener('click', () => { panel.hidden = !panel.hidden; help.hidden = panel.hidden; });
+        window.addEventListener('resize', draw);
+        draw();
+      })();
+    </script>
+  </body>
+</html>

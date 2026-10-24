@@ -41,6 +41,55 @@ Para ajustar un desfase basta con editar los tiempos; para localizar las pausas 
 ffmpeg -i public/audio/zorra-y-uvas.mp3 -af silencedetect=noise=-35dB:d=0.25 -f null - 2>&1 | grep silence_
 ```
 
+## Modo gafas (Cardboard)
+
+El botón **Gafas** (arriba a la derecha) pone la página a pantalla completa, la gira a horizontal y divide
+la pantalla en dos mitades con la misma imagen (cámara + zorro), para meter el móvil en unas gafas tipo
+Cardboard. Dentro de las gafas:
+
+- No hay control táctil (solo la X para salir). Al entrar se olvida la detección anterior y, en cuanto
+  MindAR (ya reiniciado para el horizontal) vuelve a reconocer el suelo, empieza una cuenta atrás de
+  10 segundos ("Coloca el móvil en las gafas / Empieza en N") para meter el móvil en el visor; sigue aunque
+  se pierda el suelo un momento. Al llegar a 0 aparecen el zorro y la narración; al acabar se ve "Fin".
+  Para repetir, salir con la X y volver a entrar con *Gafas*.
+- Si el navegador no deja empezar el audio solo (pasa si se abre con `?cardboard` sin haber tocado la
+  página), aparece "Toca la pantalla para empezar": es el único caso en que se usa un toque.
+- Subtítulos y avisos ("Apunta al suelo", cuenta atrás, "Fin") se dibujan en los dos ojos.
+- Para salir: el botón X de la esquina superior derecha, o salir de pantalla completa (gesto o botón atrás).
+
+`?cardboard` en la URL activa la pantalla dividida sin pantalla completa (útil para probar).
+
+### Calibrar las gafas (si se ve doble)
+
+Cada mitad tiene que estar centrada en su lente; si no, los ojos no pueden fundir las dos imágenes y se ve
+todo dos veces. Las lentes de un Cardboard están a 63,9 mm y su centro a 35 mm del borde inferior de la
+pantalla ([perfil de Google](https://support.google.com/cardboard/manufacturers/answer/6324808)), pero los
+píxeles por milímetro cambian entre móviles, así que se calibra en cada móvil:
+
+1. Abrir `calibrate.html` (enlace *Calibrar gafas*, debajo del botón *Gafas*) y pulsar *Pantalla completa*.
+2. Meter el móvil en las gafas. Debe verse **una sola cruz con un punto rojo a la izquierda y uno azul a la
+   derecha** (el rojo solo lo ve el ojo izquierdo y el azul solo el derecho).
+3. Valor por defecto: 303 px de separación, el que funciona en el móvil y las gafas de la demo.
+   Si se ven dos cruces, sacar el móvil y ajustar *Separación* (− si las cruces se separan hacia fuera) hasta
+   que se fundan cómodamente; después *Altura* hasta que la cruz quede en el centro de la vista, y *Zoom* si
+   la imagen se corta. Un toque en la imagen oculta los controles.
+4. *Probar en la demo* abre el modo gafas con esos valores.
+
+Los valores se guardan en el navegador del móvil (`localStorage`) y los usan tanto `calibrate.html` como el
+modo gafas, con el mismo cálculo (`public/cardboard-calibration.js`). No se corrige la distorsión de las
+lentes (bordes curvados); se puede añadir más adelante.
+
+Cómo funciona: el componente `cardboard` (en `index.html`) copia en cada fotograma, después del render, la
+franja central de la vista normal (vídeo de la cámara + lienzo de A-Frame) en las dos mitades de `#stereo`.
+MindAR y la escena no cambian.
+
+Giro del móvil: MindAR prepara su análisis para el tamaño de los fotogramas de la cámara al arrancar y no lo
+actualiza; al girar (por ejemplo al entrar en modo gafas, que pone horizontal) dejaba de reconocer el suelo.
+`index.html` reinicia MindAR cuando cambia el tamaño del vídeo (sin volver a pedir permiso); tarda un
+segundo en volver a detectar el suelo. Antes de reiniciar marca el suelo como perdido: MindAR solo avisa de
+`targetFound` si estaba oculto, y sin esto no volvería a avisar tras el reinicio. Limitaciones: ambos ojos ven lo mismo (sin profundidad), no hay corrección
+de la distorsión de las lentes y, pegado a los ojos, el retraso del seguimiento se nota más.
+
 ## Suelo de referencia
 
 `print/floor-print.png` (4096 px) es la imagen que se imprime; `public/targets/floor.png` (1024 px) y
@@ -95,7 +144,8 @@ lo disimula mejor; si algún móvil no lo lee, bajarlo. Para obtener el `.mind`,
 ## Ajuste de estabilidad (desde la URL)
 
 Sin volver a desplegar, se pueden probar valores añadiendo parámetros a la URL, por ejemplo
-`https://<url>/?beta=10&fov=60`. Si hay parámetros, arriba a la izquierda se muestran los valores activos.
+`https://<url>/?beta=10&fov=60`. Si hay alguno de estos parámetros, arriba a la izquierda se muestran
+los valores activos.
 
 | Parámetro | Qué hace | Por defecto |
 |---|---|---|
