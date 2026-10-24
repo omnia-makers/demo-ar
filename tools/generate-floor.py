@@ -4,7 +4,11 @@ A plain checkerboard is a bad target: every corner looks the same, so the matche
 them apart. Here every tile is unique (vein direction, frequency, turbulence, tone, wear, cracks)
 while the whole still reads as an old diagonal marble floor.
 
-Usage: python3 tools/generate-floor.py OUT_DIR [--size 4096] [--tiles 7] [--seed 7]
+With --qr URL the four tiles around the centre are replaced by one large inlaid slab holding a QR code
+built from dark and light marble tesserae, framed in red marble, so a phone camera opens the URL while
+the floor still looks like a floor. Needs `segno` (pip install segno); the rest of the floor is unchanged.
+
+Usage: python3 tools/generate-floor.py OUT_DIR [--size 4096] [--tiles 7] [--seed 7] [--qr URL]
 Writes OUT_DIR/floor-print.png (for printing) and OUT_DIR/floor.png (1024 px, for compiling).
 """
 import argparse
@@ -34,6 +38,50 @@ def fbm(rng, size, octaves=6, base=4, persistence=0.55):
     return (out - out.mean()) / (out.std() * 3)
 
 
+QR_DARK = (52, 50, 52)
+QR_LIGHT = (226, 218, 200)
+QR_FRAME = (112, 54, 46)
+QR_QUIET, QR_FRAME_MODULES = 4, 2  # quiet zone required by QR readers; red marble frame around it
+
+
+def qr_inlay(url, side, seed, texture=1.0):
+    """Square RGB array (side x side) with the QR as marble tesserae. Error level H (30% recoverable)
+    leaves room for the texture and for wear or a partial occlusion. `texture` scales the marble
+    clouds and veins: higher hides the code better but lowers its contrast."""
+    import segno
+
+    qr = segno.make(url, error="h", boost_error=False, micro=False)
+    dark = np.array(qr.matrix, bool)
+    n = dark.shape[0] + 2 * (QR_QUIET + QR_FRAME_MODULES)
+    mod = side / n
+    rng = np.random.default_rng(seed)
+
+    y, x = np.mgrid[0:side, 0:side].astype(np.float32)
+    mi = np.clip((y / mod).astype(np.int32), 0, n - 1) - QR_FRAME_MODULES - QR_QUIET
+    mj = np.clip((x / mod).astype(np.int32), 0, n - 1) - QR_FRAME_MODULES - QR_QUIET
+    inside_qr = (mi >= 0) & (mj >= 0) & (mi < dark.shape[0]) & (mj < dark.shape[1])
+    is_dark = np.zeros((side, side), bool)
+    is_dark[inside_qr] = dark[mi[inside_qr], mj[inside_qr]]
+    ring = (mi < -QR_QUIET) | (mj < -QR_QUIET) | (mi >= dark.shape[0] + QR_QUIET) | (mj >= dark.shape[1] + QR_QUIET)
+
+    img = np.empty((side, side, 3), np.float32)
+    img[:] = QR_LIGHT
+    img[is_dark] = QR_DARK
+    img[ring] = QR_FRAME
+    # Marble texture, kept low so the dark/light contrast the reader needs survives.
+    cloud = fbm(rng, side, octaves=6, base=4)
+    img *= (1 + 0.10 * texture * cloud[..., None])
+    phase = (x * 0.7 + y * 0.3) * 0.004 * 4096 / side * 2 + 6 * fbm(rng, side, octaves=6, base=3)
+    veins = (1 - np.abs(np.sin(phase))) ** 3
+    vein_k = min(0.18 * texture, 0.6)
+    img = img * (1 - vein_k * veins[..., None]) + 128 * vein_k * veins[..., None]
+    # Thin joints between tesserae: a mosaic look, faint enough not to split dark modules.
+    fy, fx = (y / mod) % 1, (x / mod) % 1
+    joint = (np.minimum(np.minimum(fy, 1 - fy), np.minimum(fx, 1 - fx)) < 0.05) & inside_qr
+    img[joint] *= 0.86
+    return np.clip(img, 0, 255).astype(np.uint8), qr.designator
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out_dir", type=Path)
@@ -45,6 +93,9 @@ def main():
     ap.add_argument("--cloud", type=float, default=0.05, help="strength of the cloudy tone variation inside tiles")
     ap.add_argument("--grout-contrast", type=float, default=1.0,
                     help="0 = grout same colour as the tile (grid corners invisible), 1 = full grout colour")
+    ap.add_argument("--qr", metavar="URL", help="inlay a QR code to this URL in the centre of the floor")
+    ap.add_argument("--qr-texture", type=float, default=1.0,
+                    help="marble texture over the QR: higher hides it better, lower reads more reliably")
     args = ap.parse_args()
 
     S = args.size
@@ -134,6 +185,19 @@ def main():
         r = rng.uniform(S / 600, S / 250)
         c = int(rng.uniform(110, 170))
         draw.ellipse([cx - r, cy - r * rng.uniform(0.5, 1), cx + r, cy + r], fill=(c, c - 6, c - 14))
+
+    if args.qr:
+        # The four tiles around the centre form a diamond of diagonal 2 * diag: replace them with one slab.
+        # Its own seed keeps the rest of the floor identical with or without the QR.
+        side = int(round(2 * diag / math.sqrt(2)))
+        inlay, version = qr_inlay(args.qr, side, args.seed + 1000, args.qr_texture)
+        rotated = Image.fromarray(inlay).rotate(45, resample=Image.BICUBIC, expand=True)
+        mask = Image.new("L", (side, side), 255).rotate(45, resample=Image.BICUBIC, expand=True)
+        out.paste(rotated, (S // 2 - rotated.width // 2, S // 2 - rotated.height // 2), mask)
+        half = diag
+        ImageDraw.Draw(out).polygon([(S / 2, S / 2 - half), (S / 2 + half, S / 2), (S / 2, S / 2 + half), (S / 2 - half, S / 2)],
+                                    outline=GROUT, width=max(2, int(S / 1100 * 2)))
+        print(f"QR {version} -> {args.qr}")
 
     out = out.filter(ImageFilter.GaussianBlur(S / 4096 * 0.6))
     args.out_dir.mkdir(parents=True, exist_ok=True)

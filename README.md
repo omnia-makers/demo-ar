@@ -48,11 +48,20 @@ ffmpeg -i public/audio/zorra-y-uvas.mp3 -af silencedetect=noise=-35dB:d=0.25 -f 
 distinta (veta, tono, desgaste, grietas): un damero regular confunde al seguimiento porque todas las
 esquinas son iguales.
 
+En el centro, una losa en rombo (ocupa las 4 baldosas centrales) lleva un **código QR** a
+`https://omnia-makers.github.io/demo-ar/`, hecho con teselas de mármol oscuro y crema y enmarcado en mármol
+rojo, para que la cámara del móvil abra la demo. Es nivel H (admite un 30 % dañado o tapado). Comprobado con
+OpenCV en vistas simuladas: se lee igual que un QR liso del mismo tamaño, y el seguimiento AR no empeora.
+Si el escenario impreso en 3D va a ir en el centro, tapará el QR: en ese caso hay que mover el escenario
+(el `position` de `#anchor`) o la losa.
+
 Impresión:
 - Tamaño: cuanto más grande, mejor se detecta de lejos y en ángulo. Recomendado 1 × 1 m (4 baldosas de
   unos 25 cm de diagonal por lado); con 4096 px da unos 100 ppp, suficiente para verlo de pie.
 - Material: vinilo de suelo **mate** (laminado antideslizante). El brillo refleja las lámparas y rompe el seguimiento.
-- Con el escenario encima tapando el centro sigue funcionando: los bordes tienen detalle de sobra.
+- Con el escenario encima tapando el centro el seguimiento sigue funcionando (los bordes tienen detalle
+  de sobra), pero el QR quedaría tapado.
+- Con 1 m, la losa del QR mide unos 36 cm de lado (módulos de ~7 mm): se lee de pie, a 1–2 m.
 - Escala del modelo: 1 unidad = ancho impreso. Con 1 m, el zorro (`scale 0.004`) mide unos 60 cm.
 
 Límites medidos con `tools/target-check.html` (simulación con poca luz y el centro tapado):
@@ -60,16 +69,19 @@ detecta y sigue bien hasta unos 55° de inclinación respecto a la vertical; por
 funciona ninguna imagen con MindAR. Con el móvil a la altura del pecho, conviene estar a menos de
 1–1,5 m del borde del suelo impreso.
 
-Regenerar (otros colores, tamaño o número de baldosas):
+Regenerar (otros colores, tamaño, número de baldosas u otra URL en el QR; dependencias en
+`tools/requirements.txt`):
 
 ```bash
-python3 tools/generate-floor.py tools/out/nuevo --size 4096 --tiles 4 --vein-power 1.2 3 --cloud 0.5 --grout-contrast 0.15 --seed 21
+python3 tools/generate-floor.py tools/out/nuevo --size 4096 --tiles 4 --vein-power 1.2 3 --cloud 0.5 --grout-contrast 0.15 --seed 21 \
+  --qr https://omnia-makers.github.io/demo-ar/ --qr-texture 3
 python3 -m http.server 8099   # y abrir http://localhost:8099/tools/target-check.html?img=out/nuevo/floor.png
 ```
 
 `target-check.html` compila la imagen, la prueba con varias inclinaciones, distancias, poca luz y el
-centro tapado, y da el porcentaje de detección y seguimiento (referencia: el suelo actual da ~58 %,
-la imagen de ejemplo de MindAR ~56 %). Para obtener el `.mind`, usar el compilador web de MindAR
+centro tapado, y da el porcentaje de detección y seguimiento (referencia: el suelo actual con QR da
+~60 %, la imagen de ejemplo de MindAR ~56 %). `--qr-texture` controla cuánto mármol lleva el QR: más alto
+lo disimula mejor; si algún móvil no lo lee, bajarlo. Para obtener el `.mind`, usar el compilador web de MindAR
 (https://hiukim.github.io/mind-ar-js-doc/tools/compile) con `floor.png`.
 
 ## Usar nuestro escenario
