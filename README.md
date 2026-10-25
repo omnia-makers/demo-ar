@@ -10,10 +10,7 @@ Las librerías están en `public/vendor/` para que el APK funcione sin conexión
 - Modelo `public/models/fox/fox.glb`: *Fox*, de [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox).
   Modelo de PixelMannen (CC0), rigging y animación de tomkranis (CC-BY 4.0), conversión a glTF de @AsoboStudio y @scurest (CC-BY 4.0).
 - Imagen de referencia `public/targets/floor.*`: generada con `tools/generate-floor.py` (propia).
-- Narración `public/audio/zorra-y-uvas.mp3`: "La zorra y las uvas", *Las Fábulas de Esopo, vol. 1*, leída por
-  paulino para [LibriVox](https://librivox.org/las-fabulas-de-esopo-vol-01) (dominio público en EE. UU.;
-  también en [Project Gutenberg #21143](https://www.gutenberg.org/ebooks/21143)). Recortada del segundo 16 al 43
-  (sin la presentación de LibriVox) y recodificada a mono 64 kbps.
+- Narración `public/audio/zorro-y-erizo.mp3`: "El zorro y el erizo" (texto y audio propios del proyecto).
 
 ## Desarrollo
 
@@ -27,18 +24,18 @@ Prueba rápida: apunta el móvil a `public/targets/floor.png` (en pantalla o imp
 ## Narración
 
 Al detectar el suelo aparece el botón *Reproducir narración*. Al pulsarlo aparece el zorro corriendo y suena
-`public/audio/zorra-y-uvas.mp3`. Mientras suena hay dos botones: *Pausa/Continuar* (también congela al zorro)
+`public/audio/zorro-y-erizo.mp3`. Mientras suena hay dos botones: *Pausa/Continuar* (también congela al zorro)
 y *Detener* (vuelve al principio y oculta al zorro). Si se pierde el suelo, el audio y los botones siguen.
 Al acabar, el zorro pasa a la animación `Survey` y el botón ofrece repetir. El botón es necesario: los navegadores móviles solo reproducen audio tras
 un toque del usuario. Para cambiar la narración basta con sustituir el MP3 (o el `src` de `<audio id="narration">`).
 
-Subtítulos: `public/audio/zorra-y-uvas.vtt` (WebVTT, texto plano). Cada bloque es `inicio --> fin` en
+Subtítulos: `public/audio/zorro-y-erizo.vtt` (WebVTT, texto plano). Cada bloque es `inicio --> fin` en
 `minutos:segundos.milésimas` y debajo el texto (un salto de línea dentro del bloque se respeta en pantalla).
 Se muestran en blanco sobre negro encima de los botones, siguen visibles en pausa y desaparecen al detener.
 Para ajustar un desfase basta con editar los tiempos; para localizar las pausas de la voz:
 
 ```bash
-ffmpeg -i public/audio/zorra-y-uvas.mp3 -af silencedetect=noise=-35dB:d=0.25 -f null - 2>&1 | grep silence_
+ffmpeg -i public/audio/zorro-y-erizo.mp3 -af silencedetect=noise=-35dB:d=0.25 -f null - 2>&1 | grep silence_
 ```
 
 ## Modo gafas (Cardboard)
@@ -139,18 +136,30 @@ lo disimula mejor; si algún móvil no lo lee, bajarlo. Para obtener el `.mind`,
 2. Compilarla en https://hiukim.github.io/mind-ar-js-doc/tools/compile y guardar el `.mind` en `public/targets/`.
 3. En `index.html`: cambiar `imageTargetSrc`, el modelo en `<a-assets>` y el transform de `#anchor`
    (el ancho de la imagen equivale a 1 unidad; Y hacia arriba en la imagen, Z hacia fuera de ella).
-4. Si tiembla, ajustar `filterMinCF` / `filterBeta` en `mindar-image`.
+4. Si tiembla o se queda atrás al mover el móvil, ajustar `pose-snap` en `#target` (ver abajo).
 
 ## Ajuste de estabilidad (desde la URL)
 
 Sin volver a desplegar, se pueden probar valores añadiendo parámetros a la URL, por ejemplo
-`https://<url>/?beta=10&fov=60`. Si hay alguno de estos parámetros, arriba a la izquierda se muestran
+`https://<url>/?snap=0.08&fov=60`. Si hay alguno de estos parámetros, arriba a la izquierda se muestran
 los valores activos.
+
+El filtro de MindAR está desactivado: con mucho suavizado el zorro se quedaba atrás al mover el móvil.
+En su lugar, el componente `pose-snap` de `#target` compara cada detección con la posición mostrada.
+Si la diferencia es pequeña (temblor), se acerca poco a poco; si supera `snap` o `snapdeg` (el móvil se
+ha movido), salta directamente a la posición detectada.
+
+Para afinarlo desde el móvil, poner `window.SNAP_TUNING = true;` en `index.html`: la narración se desactiva,
+el zorro se ve siempre y abajo aparece un panel con botones − / + para `smooth`, `snap` y `snapdeg`
+(se guardan en el móvil) y un contador de saltos por segundo, que con el móvil quieto debe quedarse en 0.
 
 | Parámetro | Qué hace | Por defecto |
 |---|---|---|
-| `mincf` | Suavizado en reposo: más bajo = tiembla menos, pero más retraso | 0.0001 (MindAR: 0.001) |
-| `beta` | Reacción al movimiento: más alto = menos retraso (menos "patineo") | 0.001 (MindAR: 1000) |
+| `smooth` | Suavizado del temblor, en segundos: más alto = más estable, pero tarda más en asentarse | 0.5 |
+| `snap` | Distancia, en anchos de imagen, a partir de la cual salta en vez de suavizar | 0.01 |
+| `snapdeg` | Giro, en grados, a partir del cual salta en vez de suavizar | 6 |
+| `mincf` | Filtro de MindAR en reposo (desactivado con 1000; MindAR: 0.001) | 1000 |
+| `beta` | Filtro de MindAR en movimiento (MindAR: 1000) | 0 |
 | `fov` | Campo de visión vertical (grados) que MindAR supone para la cámara | 45 |
 | `debug` | Sustituye el modelo por un cubo de alambre de lado `cube` (en anchos de imagen) | |
 | `cube` | Lado del cubo en modo `debug` | 0.2 |
@@ -158,7 +167,7 @@ los valores activos.
 Calibrar `fov`: coloca en el centro de la imagen una caja real que mida 0.2 veces el ancho de la imagen
 (p. ej. 4 cm si la imagen mide 20 cm), abre `?debug` y cambia `fov` (50, 55, 60, 65...) hasta que el cubo
 coincida con la caja real desde todos los ángulos. Después fija los valores en `index.html`
-(`mindar-image` en `<a-scene>` y el valor por defecto de `fov` en el script).
+(`pose-snap` en `#target`, `mindar-image` en `<a-scene>` y el valor por defecto de `fov` en el script).
 
 `public/vendor/mindar-image-aframe.prod.js` lleva un parche: MindAR fija el campo de visión a 45°
 y se ha cambiado por `window.MINDAR_FOVY || 45`. Si se actualiza la librería, hay que volver a aplicarlo.

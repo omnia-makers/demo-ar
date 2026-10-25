@@ -59,11 +59,76 @@
       #cardboard-calibrate { position: fixed; top: calc(60px + env(safe-area-inset-top)); right: 12px; z-index: 1000;
                              padding: 6px 12px; border-radius: 999px; font: 500 13px/1 system-ui, sans-serif;
                              color: #fff; background: rgba(17, 24, 39, 0.7); text-decoration: none; }
+      #snap-panel { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 1000;
+                    display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 6px 8px;
+                    max-width: 420px; margin: 0 auto; padding: 10px 12px; border-radius: 12px; color: #fff;
+                    background: rgba(17, 24, 39, 0.85); font: 500 15px/1.2 system-ui, sans-serif;
+                    font-variant-numeric: tabular-nums; }
+      #snap-panel output { min-width: 4.5em; text-align: right; font-weight: 700; }
+      #snap-panel button { width: 44px; height: 40px; border: 0; border-radius: 10px; color: #fff;
+                           background: #374151; font: 700 20px/1 system-ui, sans-serif; }
+      #snap-panel .wide { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
+      #snap-panel .wide button { width: auto; padding: 0 14px; font-size: 14px; }
+      body.cardboard #snap-panel,
       body.cardboard #controls, body.cardboard #subtitles, body.cardboard #cardboard-toggle, body.cardboard #cardboard-calibrate,
       body.cardboard .mindar-ui-overlay, body.cardboard #tuning { display: none !important; }
     </style>
     <script src="cardboard-calibration.js"></script>
     <script>
+      // Temporary: no narration; the fox is always shown and #snap-panel tunes pose-snap on the phone.
+      // Set to false to bring the narration back.
+      window.SNAP_TUNING = false;
+
+      // Pose smoothing with a jump, on the MindAR target (MindAR's own filter is turned off, see a-scene).
+      // Small differences between the detected pose and the shown one are tracking noise: the shown pose
+      // eases towards the detected one (time constant `smooth`, s), so the fox does not shake when still.
+      // A difference over `snap` (target widths) or `snapDeg` (degrees) means the phone moved: the shown
+      // pose jumps to the detected one, so the fox does not slide behind the floor.
+      // MindAR assigns a new matrix object on every detection, so a matrix other than ours is a new reading.
+      AFRAME.registerComponent('pose-snap', {
+        schema: {
+          smooth: { default: 0.5 },
+          snap: { default: 0.01 },
+          snapDeg: { default: 6 },
+        },
+        init() {
+          this.out = new THREE.Matrix4();
+          this.raw = { p: new THREE.Vector3(), q: new THREE.Quaternion(), s: new THREE.Vector3() };
+          this.cur = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
+          this.ready = false;
+          this.onLost = () => { this.ready = false; };
+          this.el.addEventListener('targetLost', this.onLost);
+        },
+        remove() {
+          this.el.removeEventListener('targetLost', this.onLost);
+        },
+        tick(t, dt) {
+          const obj = this.el.object3D;
+          if (!obj.visible) {
+            this.ready = false;
+            return;
+          }
+          const { raw, cur, data } = this;
+          if (obj.matrix !== this.out) obj.matrix.decompose(raw.p, raw.q, raw.s);
+          // raw.s.x: target width in camera units (MindAR scales the target to its width).
+          const far = cur.p.distanceTo(raw.p) > data.snap * raw.s.x
+            || THREE.MathUtils.radToDeg(cur.q.angleTo(raw.q)) > data.snapDeg;
+          if (!this.ready || far) {
+            if (this.ready) this.snaps = (this.snaps || 0) + 1;
+            cur.p.copy(raw.p);
+            cur.q.copy(raw.q);
+            this.ready = true;
+          } else {
+            const k = 1 - Math.exp(-Math.min(dt, 100) / 1000 / Math.max(data.smooth, 1e-3));
+            cur.p.lerp(raw.p, k);
+            cur.q.slerp(raw.q, k);
+          }
+          this.out.compose(cur.p, cur.q, raw.s);
+          obj.matrix = this.out;
+          obj.matrixWorldNeedsUpdate = true;
+        },
+      });
+
       // Headset (Cardboard-style) mode: after A-Frame renders each frame (tock), copy what the phone would
       // show into #stereo twice, side by side, so both eyes see the same image (no depth). Each copy is
       // centred on its lens with the values from calibrate.html (CardboardCalibration): if the two images
@@ -203,13 +268,13 @@
   <body>
     <!--
       imageTargetSrc: compiled target (.mind): the marble floor from tools/generate-floor.py (print/floor-print.png).
-      filterMinCF / filterBeta: jitter vs. lag trade-off of the pose filter (MindAR defaults: 0.001 / 1000).
-      Lower minCF = less jitter when still; higher beta = less lag (sliding) when moving.
-      0.0001 / 0.001 chosen after testing on the phone: heavy smoothing looked best for this demo.
-      All of them, plus the camera FOV, can be overridden from the URL; see the script below the scene.
+      filterMinCF / filterBeta: MindAR's pose filter (defaults 0.001 / 1000). Turned off (minCF 1000 lets
+      every reading through): pose-snap on the target smooths instead, without the lag of a heavy filter.
+      All of them, the pose-snap values and the camera FOV can be overridden from the URL; see the script
+      below the scene.
     -->
     <a-scene
-      mindar-image="imageTargetSrc: targets/floor.mind; filterMinCF: 0.0001; filterBeta: 0.001; missTolerance: 5; warmupTolerance: 5"
+      mindar-image="imageTargetSrc: targets/floor.mind; filterMinCF: 1000; filterBeta: 0; missTolerance: 5; warmupTolerance: 5"
       color-space="sRGB"
       renderer="colorManagement: true, physicallyCorrectLights"
       xr-mode-ui="enabled: false"
@@ -229,7 +294,7 @@
         Units: target image width = 1. Tune the anchor transform to match the printed scenery.
         The image lies flat on the base, so rotate X 90 to stand the model up out of the image plane.
       -->
-      <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-entity id="target" mindar-image-target="targetIndex: 0" pose-snap>
         <!-- Hidden until the narration starts (see the narration script). -->
         <a-entity id="anchor" position="0 0 0" rotation="90 0 0" scale="0.004 0.004 0.004" visible="false">
           <!-- Clips: Survey, Walk, Run. Y 90 makes the fox run sideways across the image. -->
@@ -238,9 +303,9 @@
       </a-entity>
     </a-scene>
 
-    <!-- "La zorra y las uvas", Las Fábulas de Esopo vol. 1, read by paulino for LibriVox (public domain). -->
-    <audio id="narration" src="audio/zorra-y-uvas.mp3" preload="auto">
-      <track kind="subtitles" src="audio/zorra-y-uvas.vtt" srclang="es" label="Español" default />
+    <!-- "El zorro y el erizo" (project's own narration). -->
+    <audio id="narration" src="audio/zorro-y-erizo.mp3" preload="auto">
+      <track kind="subtitles" src="audio/zorro-y-erizo.vtt" srclang="es" label="Español" default />
     </audio>
     <div id="subtitles" hidden><span></span></div>
     <div id="controls">
@@ -340,7 +405,7 @@
       // Subtitles come from the <track> (WebVTT); the browser picks the active cue from the audio time and
       // we draw it ourselves (track mode "hidden") so it looks the same everywhere.
       (() => {
-        if (new URLSearchParams(location.search).has('debug')) return;
+        if (new URLSearchParams(location.search).has('debug') || window.SNAP_TUNING) return;
         const target = document.querySelector('#target');
         const anchor = document.querySelector('#anchor');
         const model = anchor.querySelector('a-gltf-model');
@@ -422,8 +487,10 @@
     </script>
 
     <script>
-      // Tuning from the URL, e.g. ?beta=10&mincf=0.001&fov=60&debug
-      //   mincf, beta: pose filter (see a-scene comment).
+      // Tuning from the URL, e.g. ?snap=0.08&smooth=0.5&fov=60&debug
+      //   smooth, snap, snapdeg: pose-snap on the target (smoothing time in s, jump thresholds in target
+      //          widths and degrees).
+      //   mincf, beta: MindAR's pose filter, off by default (see a-scene comment).
       //   fov: vertical FOV in degrees MindAR assumes for the camera (library default 45; patched in
       //        vendor/mindar-image-aframe.prod.js to read window.MINDAR_FOVY). A wrong value makes
       //        anything standing out of the image plane lean and slide when the viewing angle changes.
@@ -446,6 +513,13 @@
           shown.push(`${param}=${mindar[prop]}`);
         }
         scene.setAttribute('mindar-image', mindar);
+        const snap = { smooth: 'smooth', snap: 'snap', snapdeg: 'snapDeg' };
+        const target = document.querySelector('#target');
+        for (const [param, prop] of Object.entries(snap)) {
+          const value = parseFloat(params.get(param));
+          if (!Number.isNaN(value)) target.setAttribute('pose-snap', prop, value);
+          if (params.has(param)) shown.push(`${param}=${value}`);
+        }
         const fov = parseFloat(params.get('fov'));
         if (!Number.isNaN(fov)) window.MINDAR_FOVY = fov;
         shown.push(`fov=${window.MINDAR_FOVY || 45}`);
@@ -463,12 +537,91 @@
           shown.push(`cube=${size}`);
         }
 
-        if (['mincf', 'beta', 'fov', 'debug', 'cube'].some((k) => params.has(k))) {
+        if (['mincf', 'beta', 'fov', 'debug', 'cube', 'smooth', 'snap', 'snapdeg'].some((k) => params.has(k))) {
           const label = document.createElement('div');
           label.id = 'tuning';
           label.textContent = shown.join('  ');
           document.body.appendChild(label);
         }
+      })();
+    </script>
+
+    <script>
+      // pose-snap tuning panel (window.SNAP_TUNING): - / + per value, saved on the phone (localStorage) so
+      // it survives reloads. Values given in the URL win over the saved ones. "Saltos" counts jumps per
+      // second: with the phone still it should stay at 0; if not, the thresholds are below the noise.
+      (() => {
+        if (!window.SNAP_TUNING) return;
+        const params = new URLSearchParams(location.search);
+        const target = document.querySelector('#target');
+        const anchor = document.querySelector('#anchor');
+        const KEY = 'pose-snap';
+        const DEFAULTS = { smooth: 0.5, snap: 0.01, snapDeg: 6 };
+        const ROWS = [
+          { prop: 'smooth', param: 'smooth', label: 'Suavizado', step: 0.1, min: 0, max: 3, show: (v) => `${v.toFixed(1)} s` },
+          // Target widths; on the 1 m print, 0.01 = 1 cm.
+          { prop: 'snap', param: 'snap', label: 'Salto (distancia)', step: 0.01, min: 0.01, max: 0.3, show: (v) => `${(v * 100).toFixed(0)} cm` },
+          { prop: 'snapDeg', param: 'snapdeg', label: 'Salto (giro)', step: 1, min: 1, max: 30, show: (v) => `${v.toFixed(0)}°` },
+        ];
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { /* private mode */ }
+        const values = { ...DEFAULTS, ...saved };
+        for (const r of ROWS) {
+          const v = parseFloat(params.get(r.param));
+          if (!Number.isNaN(v)) values[r.prop] = v;
+        }
+
+        const panel = document.createElement('div');
+        panel.id = 'snap-panel';
+        const outputs = {};
+        for (const r of ROWS) {
+          const label = document.createElement('span');
+          label.textContent = r.label;
+          const out = outputs[r.prop] = document.createElement('output');
+          const minus = document.createElement('button');
+          const plus = document.createElement('button');
+          minus.type = plus.type = 'button';
+          minus.textContent = '−';
+          plus.textContent = '+';
+          minus.addEventListener('click', () => change(r, -1));
+          plus.addEventListener('click', () => change(r, 1));
+          panel.append(label, out, minus, plus);
+        }
+        const footer = document.createElement('div');
+        footer.className = 'wide';
+        const rate = document.createElement('span');
+        const reset = document.createElement('button');
+        reset.type = 'button';
+        reset.textContent = 'Restablecer';
+        reset.addEventListener('click', () => {
+          Object.assign(values, DEFAULTS);
+          apply();
+        });
+        footer.append(rate, reset);
+        panel.append(footer);
+        document.body.append(panel);
+
+        function change(r, dir) {
+          const v = Math.round((values[r.prop] + dir * r.step) / r.step) * r.step;
+          values[r.prop] = Math.min(r.max, Math.max(r.min, v));
+          apply();
+        }
+        function apply() {
+          for (const r of ROWS) outputs[r.prop].textContent = r.show(values[r.prop]);
+          target.setAttribute('pose-snap', values);
+          try { localStorage.setItem(KEY, JSON.stringify(values)); } catch (e) { /* private mode */ }
+        }
+        apply();
+
+        anchor.setAttribute('visible', true);
+        anchor.querySelector('a-gltf-model').setAttribute('animation-mixer', 'clip', 'Survey');
+        let last = 0;
+        setInterval(() => {
+          const comp = target.components['pose-snap'];
+          const snaps = comp ? comp.snaps || 0 : 0;
+          rate.textContent = target.object3D.visible ? `Saltos: ${snaps - last}/s` : 'Apunta al suelo';
+          last = snaps;
+        }, 1000);
       })();
     </script>
   </body>
