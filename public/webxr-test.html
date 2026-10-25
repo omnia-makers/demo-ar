@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+    <title>Prueba WebXR</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <meta name="theme-color" content="#000000" />
+    <!-- Same A-Frame as the demo; world tracking comes from ARCore through WebXR (Chrome for Android). -->
+    <script src="vendor/aframe.min.js"></script>
+    <script src="vendor/aframe-extras.min.js"></script>
+    <script src="qr-floor.js"></script>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; font: 14px/1.3 system-ui, sans-serif; }
+      body { background: #111827; }
+      #stats { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 10; display: flex; flex-wrap: wrap;
+               gap: 4px 14px; padding: 6px 10px; border-radius: 8px; color: #fff; background: rgba(17, 24, 39, 0.85);
+               font-variant-numeric: tabular-nums; }
+      #stats b { font-weight: 700; }
+      #state.found { color: #4ade80; }
+      #state.lost { color: #f87171; }
+      #bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px;
+             justify-content: center; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+      #intro { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; gap: 16px; padding: 24px; color: #fff; background: #111827; text-align: center; }
+      #intro p { max-width: 32em; margin: 0; }
+      #intro button { padding: 14px 26px; border: 0; border-radius: 999px; color: #111827; background: #4ade80;
+                      font: 700 17px system-ui, sans-serif; }
+      #intro button:disabled { color: #9ca3af; background: #374151; }
+      #intro a { color: #93c5fd; }
+      #ui { display: none; }
+      #bar button { padding: 9px 14px; border: 0; border-radius: 999px; color: #fff; background: rgba(17, 24, 39, 0.85);
+                    font: 600 14px system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="intro">
+      <h1>Prueba WebXR (ARCore)</h1>
+      <p>ARCore sigue el entorno con la cámara y los sensores. Apunta al suelo impreso: al leer el QR del
+        centro, el zorro se ancla a él y se queda en su sitio aunque dejes de ver el QR. Sin QR, toca el suelo
+        para colocarlo.</p>
+      <button id="enter" disabled>Comprobando…</button>
+      <p id="support"></p>
+      <p><a href="./">Volver a la demo</a></p>
+    </div>
+
+    <!-- DOM overlay: the only HTML Chrome shows during the AR session. -->
+    <div id="ui">
+      <div id="stats">
+        <span>Estado: <b id="state" class="lost">iniciando</b></span>
+        <span>QR: <b id="qr-state">–</b></span>
+        <span>Desvío QR: <b id="drift">–</b></span>
+        <span>Distancia: <b id="distance">–</b></span>
+      </div>
+      <div id="bar">
+        <button id="rescan">Colocar con QR</button>
+        <button id="next-clip">Animación: Survey</button>
+        <button id="exit">Salir</button>
+      </div>
+    </div>
+
+    <!--
+      Units are metres (local-floor reference space).
+      #stage holds the fox and is moved between two parents:
+      - #qr: pose of the printed floor found from its QR (qr-anchor), with the print's outline and the QR
+        diamond, so it shows whether it lines up with the real print. The fox stands at its centre as in
+        the demo, scaled to the measured print width.
+      - #tap: fallback. ar-hit-test shows a footprint of the fox where the screen centre meets a surface
+        and moves #tap there on tap.
+      Both are held by ARCore anchors, which follow ARCore's corrections as it learns the room.
+    -->
+    <a-scene
+      webxr="optionalFeatures: hit-test, anchors, camera-access, dom-overlay; overlayElement: #ui"
+      ar-hit-test="target: #tap; type: footprint"
+      reflection="directionalLight: #sun"
+      color-space="sRGB"
+      renderer="colorManagement: true; antialias: true"
+      xr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+      qr-anchor="target: #qr; stage: #stage; tap: #tap"
+      fox-distance="target: #stage"
+    >
+      <a-assets>
+        <a-asset-item id="animModel" src="models/fox/fox.glb"></a-asset-item>
+      </a-assets>
+
+      <a-entity light="type: ambient; intensity: 0.6"></a-entity>
+      <a-entity id="sun" light="type: directional; intensity: 0.8" position="1 2 1"></a-entity>
+
+      <a-entity id="tap" visible="false">
+        <a-entity id="stage" scale="0.004 0.004 0.004">
+          <a-entity id="yaw">
+            <a-gltf-model id="model" src="#animModel" animation-mixer="clip: Survey; loop: repeat"></a-gltf-model>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+
+      <!-- Children in print widths (#print is scaled to the measured width). -->
+      <a-entity id="qr" visible="false">
+        <a-entity id="print">
+          <a-box position="0 0.001 -0.5" width="1" height="0.002" depth="0.006" material="shader: flat; color: #22c55e"></a-box>
+          <a-box position="0 0.001 0.5" width="1" height="0.002" depth="0.006" material="shader: flat; color: #22c55e"></a-box>
+          <a-box position="-0.5 0.001 0" width="0.006" height="0.002" depth="1" material="shader: flat; color: #22c55e"></a-box>
+          <a-box position="0.5 0.001 0" width="0.006" height="0.002" depth="1" material="shader: flat; color: #22c55e"></a-box>
+          <!-- QR diamond: corners at +-QR_DIAGONAL / 2 on the axes (qr-floor.js). -->
+          <a-box position="-0.0943 0.001 -0.0943" rotation="0 45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
+          <a-box position="0.0943 0.001 -0.0943" rotation="0 -45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
+          <a-box position="0.0943 0.001 0.0943" rotation="0 45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
+          <a-box position="-0.0943 0.001 0.0943" rotation="0 -45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
+        </a-entity>
+      </a-entity>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+      // Distance from the phone to the fox, on the floor plane: shows that the scale is real.
+      AFRAME.registerComponent('fox-distance', {
+        schema: { target: { type: 'selector' } },
+        init() {
+          this.out = document.querySelector('#distance');
+          this.a = new THREE.Vector3();
+          this.b = new THREE.Vector3();
+          this.shown = 0;
+        },
+        tick(t) {
+          const target = this.data.target.object3D;
+          if (t - this.shown < 250 || !target.parent.visible) return;
+          this.shown = t;
+          target.getWorldPosition(this.a);
+          this.el.camera.getWorldPosition(this.b);
+          this.out.textContent = `${Math.hypot(this.a.x - this.b.x, this.a.z - this.b.z).toFixed(2)} m`;
+        },
+      });
+
+      // Places `target` on the printed floor from the QR in its centre, then leaves it to ARCore.
+      // Every `interval` ms it copies the camera image (WebXR camera-access) into a small buffer, a worker
+      // looks for the QR, and the rays through its four corners are cut with the floor plane found by
+      // ar-hit-test: that gives the print's centre, direction and width in metres (qr-floor.js).
+      // It places after 3 agreeing readings, with an ARCore anchor; later readings only show the drift.
+      AFRAME.registerComponent('qr-anchor', {
+        schema: {
+          target: { type: 'selector' },
+          stage: { type: 'selector' },
+          tap: { type: 'selector' },
+          interval: { default: 200 },
+          maxSize: { default: 960 }, // longest side of the buffer given to jsQR, px
+        },
+        init() {
+          this.ui = { state: document.querySelector('#state'), qr: document.querySelector('#qr-state'), drift: document.querySelector('#drift') };
+          this.worker = new Worker('qr-worker.js');
+          this.worker.onmessage = (e) => this.onResult(e.data);
+          this.requests = new Map();
+          this.nextId = 0;
+          this.reset();
+          this.el.addEventListener('ar-hit-test-start', () => {
+            // A-Frame keeps hit-test anchors in a map shared by its HitTest objects and updates every
+            // tracked anchor of the frame through it (an anchor missing from it would throw), so ours go
+            // in it too, with the object they move.
+            const hitTest = this.el.components['ar-hit-test'].hitTest;
+            this.anchors = hitTest && Object.getPrototypeOf(hitTest).anchorToObject3D;
+          });
+          this.el.renderer.xr.addEventListener('sessionstart', () => {
+            this.session = this.el.renderer.xr.getSession();
+            this.binding = new XRWebGLBinding(this.session, this.el.renderer.getContext());
+            this.flipY = null;
+            this.votes = { true: 0, false: 0 };
+            this.noCamera = false;
+            this.missing = 0;
+            this.floorY = undefined;
+            this.reset();
+          });
+          this.el.renderer.xr.addEventListener('sessionend', () => {
+            this.session = null;
+            this.anchor = null;
+          });
+          this.el.addEventListener('ar-hit-test-select', () => this.showOnTap());
+        },
+        reset() {
+          this.searching = true;
+          this.samples = [];
+          this.lastScan = 0;
+          this.lastSeen = 0;
+          this.pending = null;
+        },
+        setState(text, ok) {
+          this.ui.state.textContent = text;
+          this.ui.state.className = ok ? 'found' : 'lost';
+        },
+        tick(t) {
+          const renderer = this.el.renderer;
+          const frame = renderer.xr.getFrame && renderer.xr.getFrame();
+          if (!this.session || !frame) return;
+          const refSpace = renderer.xr.getReferenceSpace();
+          const hit = this.el.components['ar-hit-test'];
+          if (hit.hasPosedOnce && hit.bboxMesh.visible) this.floorY = hit.bboxMesh.position.y;
+          if (this.pending) this.place(frame, refSpace);
+          if (t - this.lastSeen > 2000) this.ui.drift.textContent = '–';
+          if (this.noCamera || this.floorY === undefined) {
+            if (this.searching && !this.data.target.object3D.visible && !this.data.tap.object3D.visible) {
+              this.setState(this.noCamera ? 'sin acceso a la cámara: toca el suelo para colocar el zorro'
+                : 'mueve el móvil despacio apuntando al suelo', false);
+            }
+            return;
+          }
+          if (this.searching && !this.data.target.object3D.visible && !this.data.tap.object3D.visible) {
+            this.setState('apunta al QR del centro del suelo, o toca para colocar el zorro', false);
+          }
+          if (this.readback) this.finishReadback();
+          if (this.requests.size || t - this.lastScan < (this.searching ? this.data.interval : 700)) return;
+          this.lastScan = t;
+          const pose = frame.getViewerPose(refSpace);
+          const view = pose && pose.views.find((v) => v.camera);
+          // Chrome gives no camera image when camera-access was not granted; allow a few frames to start.
+          if (!view) {
+            if (pose && ++this.missing > 30) this.noCamera = true;
+            return;
+          }
+          this.capture(view, t);
+        },
+        // Copies the camera image, scaled down, into an RGBA buffer for the worker. With WebGL 2 the pixels
+        // go to a GPU buffer and are fetched once the GPU is done (finishReadback), so the frame never waits.
+        capture(view, t) {
+          const gl = this.el.renderer.getContext();
+          const cam = view.camera;
+          const s = Math.min(1, this.data.maxSize / Math.max(cam.width, cam.height));
+          const w = Math.round(cam.width * s);
+          const h = Math.round(cam.height * s);
+          try {
+            const texture = this.binding.getCameraImage(cam);
+            if (!this.gl) this.setupGl(gl);
+            const g = this.gl;
+            if (g.w !== w || g.h !== h) {
+              gl.bindTexture(gl.TEXTURE_2D, g.target);
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+              g.w = w;
+              g.h = h;
+            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, g.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, g.target, 0);
+            gl.viewport(0, 0, w, h);
+            for (const cap of [gl.DEPTH_TEST, gl.BLEND, gl.CULL_FACE, gl.SCISSOR_TEST, gl.STENCIL_TEST]) gl.disable(cap);
+            gl.colorMask(true, true, true, true);
+            gl.useProgram(g.program);
+            if (gl.bindVertexArray) gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, g.quad);
+            gl.enableVertexAttribArray(g.position);
+            gl.vertexAttribPointer(g.position, 2, gl.FLOAT, false, 0, 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.uniform1i(g.sampler, 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            gl.disableVertexAttribArray(g.position);
+            const id = this.nextId++;
+            this.requests.set(id, {
+              t, width: w, height: h, proj: Array.from(view.projectionMatrix),
+              view: Array.from(view.transform.matrix), floorY: this.floorY,
+            });
+            if (gl.fenceSync) {
+              gl.bindBuffer(gl.PIXEL_PACK_BUFFER, g.pbo);
+              if (g.size !== w * h * 4) {
+                g.size = w * h * 4;
+                gl.bufferData(gl.PIXEL_PACK_BUFFER, g.size, gl.STREAM_READ);
+              }
+              gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+              gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+              this.readback = { id, w, h, fence: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) };
+              gl.flush();
+            } else {
+              const pixels = new Uint8Array(w * h * 4);
+              gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+              this.worker.postMessage({ id, pixels, width: w, height: h }, [pixels.buffer]);
+            }
+          } catch (err) {
+            console.warn('camera-access', err);
+            this.noCamera = true;
+          } finally {
+            // three.js caches GL state: make it set everything again. That also unbinds the WebXR
+            // framebuffer, bound before the scene ticks, and the frame would be drawn off screen (the fox
+            // blinked on every reading): bind it again.
+            const renderer = this.el.renderer;
+            const target = renderer.getRenderTarget();
+            renderer.resetState();
+            renderer.setRenderTarget(target);
+          }
+        },
+        finishReadback() {
+          const gl = this.el.renderer.getContext();
+          const r = this.readback;
+          const status = gl.clientWaitSync(r.fence, 0, 0);
+          if (status === gl.TIMEOUT_EXPECTED) return;
+          gl.deleteSync(r.fence);
+          this.readback = null;
+          if (status === gl.WAIT_FAILED) {
+            this.requests.delete(r.id);
+            return;
+          }
+          const pixels = new Uint8Array(r.w * r.h * 4);
+          gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.gl.pbo);
+          gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, pixels);
+          gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+          this.worker.postMessage({ id: r.id, pixels, width: r.w, height: r.h }, [pixels.buffer]);
+        },
+        setupGl(gl) {
+          const shader = (type, src) => {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, src);
+            gl.compileShader(s);
+            return s;
+          };
+          const program = gl.createProgram();
+          gl.attachShader(program, shader(gl.VERTEX_SHADER,
+            'attribute vec2 p; varying vec2 uv; void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }'));
+          gl.attachShader(program, shader(gl.FRAGMENT_SHADER,
+            'precision mediump float; varying vec2 uv; uniform sampler2D t; void main() { gl_FragColor = texture2D(t, uv); }'));
+          gl.linkProgram(program);
+          const quad = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+          const target = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, target);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          this.gl = {
+            program, quad, target, fbo: gl.createFramebuffer(), pbo: gl.createBuffer(), w: 0, h: 0, size: 0,
+            position: gl.getAttribLocation(program, 'p'), sampler: gl.getUniformLocation(program, 't'),
+          };
+        },
+        onResult({ id, code }) {
+          const req = this.requests.get(id);
+          this.requests.delete(id);
+          if (!req || !code || !this.session) return;
+          const found = QrFloor.estimate(code.location, req.width, req.height, req.proj, req.view, req.floorY);
+          // Upside down or not: the hypothesis that gives a square QR. Fixed after 2 clear readings; when
+          // both look square (camera almost straight down) the reading is skipped until then.
+          let best;
+          if (this.flipY !== null) {
+            best = found.find((e) => e.flipY === this.flipY);
+          } else if (found.length && (found.length === 1 || found[1].score - found[0].score > 0.04)) {
+            best = found[0];
+            if (++this.votes[best.flipY] >= 2 && !this.votes[!best.flipY]) this.flipY = best.flipY;
+          }
+          if (!best || best.score > 0.12) return;
+          this.lastSeen = req.t;
+          if (this.searching) this.addSample(best);
+          else this.showDrift(best);
+        },
+        addSample(e) {
+          const s = this.samples;
+          s.push(e);
+          if (s.length > 3) s.shift();
+          this.ui.qr.textContent = `leído (${s.length}/3)`;
+          if (s.length < 3) return;
+          const mean = [0, 1, 2].map((i) => s.reduce((sum, x) => sum + x.center[i], 0) / 3);
+          const spread = Math.max(...s.map((x) => Math.hypot(x.center[0] - mean[0], x.center[2] - mean[2])));
+          const widths = s.map((x) => x.width);
+          if (spread > 0.03 || Math.max(...widths) / Math.min(...widths) > 1.05) return;
+          const x = s.reduce((sum, e2) => [sum[0] + e2.xAxis[0], sum[1] + e2.xAxis[2]], [0, 0]);
+          this.pending = { center: mean, yaw: Math.atan2(-x[1], x[0]), width: widths.reduce((a, b) => a + b) / 3 };
+          this.searching = false;
+        },
+        // Moves #qr to the reading (an anchor keeps it there) and the fox into it.
+        place(frame, refSpace) {
+          const { center, yaw, width } = this.pending;
+          this.pending = null;
+          const obj = this.data.target.object3D;
+          obj.position.fromArray(center);
+          obj.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+          obj.visible = true;
+          this.width = width;
+          document.querySelector('#print').object3D.scale.setScalar(width);
+          const stage = this.data.stage.object3D;
+          obj.add(stage);
+          stage.scale.setScalar(0.004 * width);
+          document.querySelector('#yaw').object3D.rotation.set(0, Math.PI / 2, 0); // as in the demo
+          this.data.tap.object3D.visible = false;
+          this.ui.qr.textContent = `colocado, suelo de ${(width * 100).toFixed(0)} cm`;
+          this.setState('anclado al QR: ya puedes dejar de verlo', true);
+          if (!this.anchors || !frame.createAnchor) return;
+          for (const [anchor, entry] of this.anchors) {
+            if (entry.object3D === obj || entry.object3D === this.data.tap.object3D) {
+              this.anchors.delete(anchor);
+              anchor.delete();
+            }
+          }
+          const pose = new XRRigidTransform({ x: center[0], y: center[1], z: center[2] },
+            { x: obj.quaternion.x, y: obj.quaternion.y, z: obj.quaternion.z, w: obj.quaternion.w });
+          frame.createAnchor(pose, refSpace).then((anchor) => {
+            this.anchors.set(anchor, { object3D: obj, offset: new THREE.Vector3() });
+          }, (err) => console.warn('anchor', err));
+        },
+        // Difference between a new reading and where the floor is now held: ARCore drift plus reading error.
+        showDrift(e) {
+          const obj = this.data.target.object3D;
+          if (!obj.visible) return;
+          const d = Math.hypot(e.center[0] - obj.position.x, e.center[2] - obj.position.z) * 100;
+          const x = new THREE.Vector3(1, 0, 0).applyQuaternion(obj.quaternion);
+          let a = (Math.atan2(e.xAxis[2], e.xAxis[0]) - Math.atan2(x.z, x.x)) * 180 / Math.PI;
+          a = Math.abs(((a + 540) % 360) - 180);
+          this.ui.drift.textContent = `${d.toFixed(1)} cm, ${a.toFixed(1)}°`;
+        },
+        showOnTap() {
+          const tap = this.data.tap.object3D;
+          const stage = this.data.stage.object3D;
+          tap.add(stage);
+          stage.scale.setScalar(0.004);
+          // Face the viewer: camera position in #tap's frame, turned into a yaw (the model faces +Z).
+          const cam = this.el.camera.getWorldPosition(new THREE.Vector3());
+          tap.worldToLocal(cam);
+          document.querySelector('#yaw').object3D.rotation.set(0, Math.atan2(cam.x, cam.z), 0);
+          this.data.target.object3D.visible = false;
+          this.searching = false;
+          this.ui.qr.textContent = '–';
+          this.setState('colocado tocando: «Colocar con QR» para usar el QR', true);
+        },
+        rescan() {
+          this.reset();
+          this.ui.qr.textContent = 'buscando';
+          this.setState('apunta al QR del centro del suelo', false);
+        },
+      });
+
+      (() => {
+        const scene = document.querySelector('a-scene');
+        const intro = document.querySelector('#intro');
+        const enter = document.querySelector('#enter');
+        const support = document.querySelector('#support');
+        const ui = document.querySelector('#ui');
+        const model = document.querySelector('#model');
+
+        const unsupported = (why) => {
+          enter.textContent = 'No disponible';
+          support.textContent = why;
+        };
+        if (!window.isSecureContext) {
+          unsupported('WebXR necesita HTTPS.');
+        } else if (!navigator.xr) {
+          unsupported('Este navegador no tiene WebXR. Abre la página en Chrome para Android (no en la app ni en iPhone).');
+        } else {
+          navigator.xr.isSessionSupported('immersive-ar').then((ok) => {
+            if (!ok) return unsupported('Este navegador o móvil no admite AR con WebXR. Hace falta ARCore ("Servicios de Google Play para RA").');
+            enter.disabled = false;
+            enter.textContent = 'Entrar en AR';
+          }, () => unsupported('No se ha podido comprobar el soporte de WebXR.'));
+        }
+
+        enter.addEventListener('click', () => {
+          scene.enterAR().catch((err) => {
+            support.textContent = `No se ha podido iniciar la sesión AR: ${err.message || err}`;
+          });
+        });
+        scene.addEventListener('enter-vr', () => {
+          if (!scene.is('ar-mode')) return;
+          intro.style.display = 'none';
+          ui.style.display = 'block';
+          document.querySelector('#qr-state').textContent = 'buscando';
+        });
+        scene.addEventListener('exit-vr', () => {
+          intro.style.display = '';
+          ui.style.display = 'none';
+        });
+
+        // Taps on the overlay buttons must not also place the fox.
+        for (const button of ui.querySelectorAll('button')) {
+          button.addEventListener('beforexrselect', (e) => e.preventDefault());
+        }
+        document.querySelector('#rescan').addEventListener('click', () => scene.components['qr-anchor'].rescan());
+        const clips = ['Survey', 'Walk', 'Run'];
+        document.querySelector('#next-clip').addEventListener('click', (e) => {
+          const clip = clips[(clips.indexOf(model.getAttribute('animation-mixer').clip) + 1) % clips.length];
+          model.setAttribute('animation-mixer', 'clip', clip);
+          e.target.textContent = `Animación: ${clip}`;
+        });
+        document.querySelector('#exit').addEventListener('click', () => scene.exitVR());
+      })();
+    </script>
+  </body>
+</html>
