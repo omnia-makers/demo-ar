@@ -6,6 +6,7 @@
 // - playing/paused: Pause/Continue and Stop show even if the fox is lost, since the audio keeps going.
 //   Pause also freezes the fox; Stop rewinds, back to idle.
 // - ended: the fox idles (Survey) and the play button offers a replay.
+// - Locking the phone or switching apps pauses it; it carries on when the page is back.
 // Subtitles come from the audio's <track> (WebVTT); the browser picks the active cue from the audio time
 // and we draw it ourselves (track mode "hidden") so it looks the same everywhere.
 // onStart / onStop: page hooks when the narration starts and when it is stopped (or could not start).
@@ -44,6 +45,8 @@ window.createNarration = ({ audio, playButton, pauseButton, stopButton, subtitle
     audio.currentTime = 0;
     setState('playing');
     return audio.play().catch((e) => {
+      // Pause or Stop pressed before the audio began also rejects play() (AbortError): not a failure.
+      if (state !== 'playing') return;
       onStop?.();
       setState('idle');
       throw e;
@@ -51,8 +54,9 @@ window.createNarration = ({ audio, playButton, pauseButton, stopButton, subtitle
   };
   const pauseOrResume = () => {
     if (state === 'paused') {
-      audio.play();
       setState('playing');
+      // If the browser refuses, stay paused so that Continue can be pressed again.
+      audio.play().catch(() => { if (state === 'playing') setState('paused'); });
     } else {
       audio.pause();
       setState('paused');
@@ -71,6 +75,19 @@ window.createNarration = ({ audio, playButton, pauseButton, stopButton, subtitle
   audio.addEventListener('ended', () => {
     model.setAttribute('animation-mixer', 'clip', 'Survey');
     setState('ended');
+  });
+  // Phones keep playing audio with the screen off or in another app, but the camera stops: pause with the
+  // page and carry on when it is back (also in the headset mode, which has no Continue button).
+  let pausedByPage = false;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state !== 'playing') return;
+      pausedByPage = true;
+      pauseOrResume();
+    } else if (pausedByPage) {
+      pausedByPage = false;
+      if (state === 'paused') pauseOrResume();
+    }
   });
   setState('idle');
 

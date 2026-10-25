@@ -1,5 +1,5 @@
-// Cardboard eye placement, shared by calibrate.html and the headset mode in index.html so that what looks
-// right while calibrating looks the same in the demo.
+// Cardboard eye placement (and the switch to fullscreen landscape), shared by calibrate.html and the headset
+// mode in index.html so that what looks right while calibrating looks the same in the demo.
 //
 // Each eye's image must be centred on its lens, or the eyes cannot fuse the two images (double vision).
 // Google's Cardboard profile (I/O 2015): lenses 63.9 mm apart, lens centre 35 mm above the bottom edge of the
@@ -54,5 +54,16 @@ window.CardboardCalibration = (() => {
     { cx: W / 2 + c.sep / 2, cy: H - c.y, clipX: W / 2, clipW: W / 2 },
   ];
 
-  return { load, save, clear, resolve, eyes, PX_PER_MM };
+  // Fullscreen + landscape lock. Both need a user gesture and may be refused (e.g. desktop or iPhone):
+  // it never fails, the split view works without them and the phone can be rotated by hand.
+  const enterFullscreen = async () => {
+    try {
+      await document.documentElement.requestFullscreen();
+      await screen.orientation.lock('landscape');
+    } catch (e) {
+      // Not supported.
+    }
+  };
+
+  return { load, save, clear, resolve, eyes, enterFullscreen, PX_PER_MM };
 })();

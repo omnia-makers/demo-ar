@@ -86,7 +86,6 @@
       webxr="optionalFeatures: hit-test, anchors, camera-access, dom-overlay; overlayElement: #ui"
       ar-hit-test="target: #floor-hit; type: footprint"
       reflection="directionalLight: #sun"
-      color-space="sRGB"
       renderer="colorManagement: true; antialias: true"
       xr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
@@ -139,12 +138,14 @@
       // Every `interval` ms it copies the camera image (WebXR camera-access) into a small buffer, a worker
       // looks for the QR, and the rays through its four corners are cut with the floor plane found by
       // ar-hit-test: that gives the print's centre, direction and width in metres (qr-floor.js).
-      // It places after 3 agreeing readings, with an ARCore anchor; later readings only show the drift.
+      // It places after 3 agreeing readings, with an ARCore anchor; later readings only show the drift, so
+      // they are spaced out (`driftInterval`) to save battery.
       AFRAME.registerComponent('qr-anchor', {
         schema: {
           target: { type: 'selector' },
           stage: { type: 'selector' },
           interval: { default: 200 },
+          driftInterval: { default: 2000 },
           maxSize: { default: 960 }, // longest side of the buffer given to jsQR, px
         },
         init() {
@@ -170,10 +171,17 @@
             this.missing = 0;
             this.floorY = undefined;
             this.reset();
+            // Readings still in flight belong to the old session. Without this, one that never got a reply
+            // would block the QR search for good (it only scans with no reading pending).
+            this.requests.clear();
+            if (this.readback) this.el.renderer.getContext().deleteSync(this.readback.fence);
+            this.readback = null;
           });
           this.el.renderer.xr.addEventListener('sessionend', () => {
             this.session = null;
-            this.anchor = null;
+            // The floor pose is in this session's reference space: in the next one it would put the fox
+            // somewhere else, so it waits for a new QR reading.
+            this.data.target.object3D.visible = false;
           });
         },
         reset() {
@@ -195,7 +203,7 @@
           const hit = this.el.components['ar-hit-test'];
           if (hit.hasPosedOnce && hit.bboxMesh.visible) this.floorY = hit.bboxMesh.position.y;
           if (this.pending) this.place(frame, refSpace);
-          if (t - this.lastSeen > 2000) this.ui.drift.textContent = '–';
+          if (t - this.lastSeen > 2.5 * this.data.driftInterval) this.ui.drift.textContent = '–';
           if (this.noCamera || this.floorY === undefined) {
             if (this.searching && !this.data.target.object3D.visible) {
               this.setState(this.noCamera ? 'sin acceso a la cámara: no se puede leer el QR'
@@ -207,7 +215,7 @@
             this.setState('apunta al QR del centro del suelo', false);
           }
           if (this.readback) this.finishReadback();
-          if (this.requests.size || t - this.lastScan < (this.searching ? this.data.interval : 700)) return;
+          if (this.requests.size || t - this.lastScan < (this.searching ? this.data.interval : this.data.driftInterval)) return;
           this.lastScan = t;
           const pose = frame.getViewerPose(refSpace);
           const view = pose && pose.views.find((v) => v.camera);
@@ -267,7 +275,7 @@
               this.readback = { id, w, h, fence: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) };
               gl.flush();
             } else {
-              const pixels = new Uint8Array(w * h * 4);
+              const pixels = this.takeBuffer(w * h * 4);
               gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
               this.worker.postMessage({ id, pixels, width: w, height: h }, [pixels.buffer]);
             }
@@ -295,11 +303,18 @@
             this.requests.delete(r.id);
             return;
           }
-          const pixels = new Uint8Array(r.w * r.h * 4);
+          const pixels = this.takeBuffer(r.w * r.h * 4);
           gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.gl.pbo);
           gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, pixels);
           gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
           this.worker.postMessage({ id: r.id, pixels, width: r.w, height: r.h }, [pixels.buffer]);
+        },
+        // The worker hands each pixel buffer back with its reply (onResult): reuse it instead of allocating
+        // ~2 MB per reading, which would make the garbage collector pause the AR view.
+        takeBuffer(size) {
+          const pixels = this.spare && this.spare.length === size ? this.spare : new Uint8Array(size);
+          this.spare = null;
+          return pixels;
         },
         setupGl(gl) {
           const shader = (type, src) => {
@@ -327,7 +342,8 @@
             position: gl.getAttribLocation(program, 'p'), sampler: gl.getUniformLocation(program, 't'),
           };
         },
-        onResult({ id, code }) {
+        onResult({ id, code, pixels }) {
+          if (pixels) this.spare = pixels;
           const req = this.requests.get(id);
           this.requests.delete(id);
           if (!req || !code || !this.session) return;
@@ -436,6 +452,7 @@
           intro.style.display = 'none';
           ui.style.display = 'block';
           document.querySelector('#qr-state').textContent = 'buscando';
+          document.querySelector('#distance').textContent = '–';
         });
         scene.addEventListener('exit-vr', () => {
           intro.style.display = '';

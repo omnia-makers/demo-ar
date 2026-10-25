@@ -55,13 +55,19 @@
         const panel = document.querySelector('#panel');
         const help = document.querySelector('#help');
         let values = C.load();
+        let dpr = 1;
+
+        // Sizing the canvas reallocates it: only when the screen changes, not on every redraw.
+        const resize = () => {
+          dpr = window.devicePixelRatio || 1;
+          canvas.width = Math.round(window.innerWidth * dpr);
+          canvas.height = Math.round(window.innerHeight * dpr);
+          document.querySelector('#rotate').hidden = window.innerWidth > window.innerHeight;
+          draw();
+        };
 
         const draw = () => {
           const W = window.innerWidth, H = window.innerHeight;
-          const dpr = window.devicePixelRatio || 1;
-          canvas.width = Math.round(W * dpr);
-          canvas.height = Math.round(H * dpr);
-          document.querySelector('#rotate').hidden = W > H;
           const c = C.resolve(W, H, values);
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
           ctx.fillStyle = '#000';
@@ -135,18 +141,11 @@
           for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
         }
         document.querySelector('#reset').addEventListener('click', () => { C.clear(); values = {}; draw(); });
-        document.querySelector('#fullscreen').addEventListener('click', async () => {
-          try {
-            await document.documentElement.requestFullscreen();
-            await screen.orientation.lock('landscape');
-          } catch (e) {
-            // Not supported: rotate the phone by hand.
-          }
-        });
+        document.querySelector('#fullscreen').addEventListener('click', () => C.enterFullscreen());
         document.querySelector('#demo').addEventListener('click', () => { location.href = './?cardboard'; });
         canvas.addEventListener('click', () => { panel.hidden = !panel.hidden; help.hidden = panel.hidden; });
-        window.addEventListener('resize', draw);
-        draw();
+        window.addEventListener('resize', resize);
+        resize();
       })();
     </script>
   </body>

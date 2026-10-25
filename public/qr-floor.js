@@ -5,7 +5,7 @@
 // y up out of it (same as the demo: the fox stands at the centre). The QR is laid as a diamond: its
 // top-left corner points to the left edge of the print, top-right to the top, bottom-right to the right
 // and bottom-left to the bottom. QR_DIAGONAL: TL to BR (and TR to BL) in print widths, measured with
-// jsQR on public/targets/floor.png (tools/generate-floor.py --qr, 7 tiles).
+// jsQR on public/targets/floor.png (tools/generate-floor.py --qr, 4 tiles).
 (function (root) {
   const QR_DIAGONAL = 0.3772;
 

@@ -26,6 +26,7 @@ Prueba rápida: apunta el móvil a `public/targets/floor.png` (en pantalla o imp
 Al detectar el suelo aparece el botón *Reproducir narración*. Al pulsarlo aparece el zorro corriendo y suena
 `public/audio/zorro-y-erizo.mp3`. Mientras suena hay dos botones: *Pausa/Continuar* (también congela al zorro)
 y *Detener* (vuelve al principio y oculta al zorro). Si se pierde el suelo, el audio y los botones siguen.
+Si se bloquea el móvil o se cambia de app, la narración se pausa y sigue sola al volver.
 Al acabar, el zorro pasa a la animación `Survey` y el botón ofrece repetir. El botón es necesario: los navegadores móviles solo reproducen audio tras
 un toque del usuario. Para cambiar la narración basta con sustituir el MP3 (o el `src` de `<audio id="narration">`
 en `index.html` y `public/webxr-test.html`). La lógica y los estilos están en `public/narration.js` y
@@ -78,7 +79,7 @@ Los valores se guardan en el navegador del móvil (`localStorage`) y los usan ta
 modo gafas, con el mismo cálculo (`public/cardboard-calibration.js`). No se corrige la distorsión de las
 lentes (bordes curvados); se puede añadir más adelante.
 
-Cómo funciona: el componente `cardboard` (en `index.html`) copia en cada fotograma, después del render, la
+Cómo funciona: el componente `cardboard` (`public/cardboard.js`) copia en cada fotograma, después del render, la
 franja central de la vista normal (vídeo de la cámara + lienzo de A-Frame) en las dos mitades de `#stereo`.
 MindAR y la escena no cambian.
 
@@ -147,7 +148,7 @@ Sin volver a desplegar, se pueden probar valores añadiendo parámetros a la URL
 los valores activos.
 
 El filtro de MindAR está desactivado: con mucho suavizado el zorro se quedaba atrás al mover el móvil.
-En su lugar, el componente `pose-snap` de `#target` compara cada detección con la posición mostrada.
+En su lugar, el componente `pose-snap` (`public/pose-snap.js`) de `#target` compara cada detección con la posición mostrada.
 Si la diferencia es pequeña (temblor), se acerca poco a poco; si supera `snap` o `snapdeg` (el móvil se
 ha movido), salta directamente a la posición detectada.
 
