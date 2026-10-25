@@ -1,0 +1,23 @@
+/* Narration buttons and subtitles (narration.js), shared by index.html and webxr-test.html. */
+#controls { position: fixed; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom)); z-index: 1000;
+            transform: translateX(-50%); display: flex; gap: 12px; }
+#controls button { padding: 14px 24px; border: 0; border-radius: 999px; white-space: nowrap;
+                   font: 600 17px/1 system-ui, sans-serif; color: #fff; background: rgba(17, 24, 39, 0.85);
+                   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
+#controls button[hidden] { display: none; }
+/* Icons drawn with CSS: glyphs like U+25B6 render as colour emoji on some phones. */
+#controls button::before { content: ""; display: inline-block; width: 0.75em; height: 0.75em;
+                           margin-right: 0.5em; vertical-align: -0.05em; background: currentColor; }
+#controls button[data-icon="play"]::before { clip-path: polygon(10% 0, 100% 50%, 10% 100%); }
+#controls button[data-icon="pause"]::before {
+  background: linear-gradient(90deg, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
+#controls button[data-icon="stop"]::before { clip-path: inset(6%); }
+#controls button[data-icon="replay"]::before { border: 0.14em solid currentColor; border-right-color: transparent;
+                                               border-radius: 50%; background: none; box-sizing: border-box; }
+#subtitles { position: fixed; left: 50%; bottom: calc(104px + env(safe-area-inset-bottom)); z-index: 1000;
+             transform: translateX(-50%); width: max-content; max-width: 90vw; text-align: center;
+             white-space: pre-line; pointer-events: none; }
+#subtitles[hidden] { display: none; }
+/* Black box per line (clone repeats the padding on wrapped lines). */
+#subtitles span { padding: 4px 10px; font: 500 18px/1.7 system-ui, sans-serif;
+                  color: #fff; background: #000; -webkit-box-decoration-break: clone; box-decoration-break: clone; }

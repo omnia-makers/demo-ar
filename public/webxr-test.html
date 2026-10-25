@@ -10,6 +10,8 @@
     <script src="vendor/aframe.min.js"></script>
     <script src="vendor/aframe-extras.min.js"></script>
     <script src="qr-floor.js"></script>
+    <script src="narration.js"></script>
+    <link rel="stylesheet" href="narration.css" />
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; font: 14px/1.3 system-ui, sans-serif; }
       body { background: #111827; }
@@ -29,6 +31,9 @@
       #intro button:disabled { color: #9ca3af; background: #374151; }
       #intro a { color: #93c5fd; }
       #ui { display: none; }
+      /* Narration (narration.css) above the bottom bar. */
+      #ui #controls { bottom: calc(64px + env(safe-area-inset-bottom)); }
+      #ui #subtitles { bottom: calc(136px + env(safe-area-inset-bottom)); }
       #bar button { padding: 9px 14px; border: 0; border-radius: 999px; color: #fff; background: rgba(17, 24, 39, 0.85);
                     font: 600 14px system-ui, sans-serif; }
     </style>
@@ -37,8 +42,8 @@
     <div id="intro">
       <h1>Prueba WebXR (ARCore)</h1>
       <p>ARCore sigue el entorno con la cámara y los sensores. Apunta al suelo impreso: al leer el QR del
-        centro, el zorro se ancla a él y se queda en su sitio aunque dejes de ver el QR. Sin QR, toca el suelo
-        para colocarlo.</p>
+        centro, el zorro se ancla a él y se queda en su sitio aunque dejes de ver el QR. Con el zorro
+        colocado aparece el botón de la narración.</p>
       <button id="enter" disabled>Comprobando…</button>
       <p id="support"></p>
       <p><a href="./">Volver a la demo</a></p>
@@ -52,32 +57,40 @@
         <span>Desvío QR: <b id="drift">–</b></span>
         <span>Distancia: <b id="distance">–</b></span>
       </div>
+      <div id="subtitles" hidden><span></span></div>
+      <div id="controls">
+        <button id="play" type="button" data-icon="play" hidden>Reproducir narración</button>
+        <button id="pause" type="button" data-icon="pause" hidden>Pausa</button>
+        <button id="stop" type="button" data-icon="stop" hidden>Detener</button>
+      </div>
       <div id="bar">
         <button id="rescan">Colocar con QR</button>
-        <button id="next-clip">Animación: Survey</button>
         <button id="exit">Salir</button>
       </div>
     </div>
+    <!-- Same narration as the demo (narration.js). -->
+    <audio id="narration" src="audio/zorro-y-erizo.mp3" preload="auto">
+      <track kind="subtitles" src="audio/zorro-y-erizo.vtt" srclang="es" label="Español" default />
+    </audio>
 
     <!--
       Units are metres (local-floor reference space).
-      #stage holds the fox and is moved between two parents:
-      - #qr: pose of the printed floor found from its QR (qr-anchor), with the print's outline and the QR
-        diamond, so it shows whether it lines up with the real print. The fox stands at its centre as in
-        the demo, scaled to the measured print width.
-      - #tap: fallback. ar-hit-test shows a footprint of the fox where the screen centre meets a surface
-        and moves #tap there on tap.
-      Both are held by ARCore anchors, which follow ARCore's corrections as it learns the room.
+      #qr: pose of the printed floor found from its QR (qr-anchor), held by an ARCore anchor that follows
+      ARCore's corrections as it learns the room. The fox (#stage) stands at its centre as in the demo,
+      scaled to the measured print width.
+      ar-hit-test only finds the floor height for qr-anchor (it shows a small square where the screen
+      centre meets a surface). Tapping does not move the fox: on tap A-Frame moves #floor-hit, which only
+      holds an invisible box that sets the size of that square.
     -->
     <a-scene
       webxr="optionalFeatures: hit-test, anchors, camera-access, dom-overlay; overlayElement: #ui"
-      ar-hit-test="target: #tap; type: footprint"
+      ar-hit-test="target: #floor-hit; type: footprint"
       reflection="directionalLight: #sun"
       color-space="sRGB"
       renderer="colorManagement: true; antialias: true"
       xr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
-      qr-anchor="target: #qr; stage: #stage; tap: #tap"
+      qr-anchor="target: #qr; stage: #stage"
       fox-distance="target: #stage"
     >
       <a-assets>
@@ -87,26 +100,15 @@
       <a-entity light="type: ambient; intensity: 0.6"></a-entity>
       <a-entity id="sun" light="type: directional; intensity: 0.8" position="1 2 1"></a-entity>
 
-      <a-entity id="tap" visible="false">
-        <a-entity id="stage" scale="0.004 0.004 0.004">
-          <a-entity id="yaw">
-            <a-gltf-model id="model" src="#animModel" animation-mixer="clip: Survey; loop: repeat"></a-gltf-model>
-          </a-entity>
-        </a-entity>
+      <a-entity id="floor-hit">
+        <a-box visible="false" width="0.1" height="0.01" depth="0.1"></a-box>
       </a-entity>
 
-      <!-- Children in print widths (#print is scaled to the measured width). -->
       <a-entity id="qr" visible="false">
-        <a-entity id="print">
-          <a-box position="0 0.001 -0.5" width="1" height="0.002" depth="0.006" material="shader: flat; color: #22c55e"></a-box>
-          <a-box position="0 0.001 0.5" width="1" height="0.002" depth="0.006" material="shader: flat; color: #22c55e"></a-box>
-          <a-box position="-0.5 0.001 0" width="0.006" height="0.002" depth="1" material="shader: flat; color: #22c55e"></a-box>
-          <a-box position="0.5 0.001 0" width="0.006" height="0.002" depth="1" material="shader: flat; color: #22c55e"></a-box>
-          <!-- QR diamond: corners at +-QR_DIAGONAL / 2 on the axes (qr-floor.js). -->
-          <a-box position="-0.0943 0.001 -0.0943" rotation="0 45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
-          <a-box position="0.0943 0.001 -0.0943" rotation="0 -45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
-          <a-box position="0.0943 0.001 0.0943" rotation="0 45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
-          <a-box position="-0.0943 0.001 0.0943" rotation="0 -45 0" width="0.2667" height="0.002" depth="0.004" material="shader: flat; color: #facc15"></a-box>
+        <a-entity id="stage" scale="0.004 0.004 0.004">
+          <a-entity id="yaw" rotation="0 90 0">
+            <a-gltf-model id="model" src="#animModel" animation-mixer="clip: Survey; loop: repeat"></a-gltf-model>
+          </a-entity>
         </a-entity>
       </a-entity>
 
@@ -142,7 +144,6 @@
         schema: {
           target: { type: 'selector' },
           stage: { type: 'selector' },
-          tap: { type: 'selector' },
           interval: { default: 200 },
           maxSize: { default: 960 }, // longest side of the buffer given to jsQR, px
         },
@@ -174,7 +175,6 @@
             this.session = null;
             this.anchor = null;
           });
-          this.el.addEventListener('ar-hit-test-select', () => this.showOnTap());
         },
         reset() {
           this.searching = true;
@@ -197,14 +197,14 @@
           if (this.pending) this.place(frame, refSpace);
           if (t - this.lastSeen > 2000) this.ui.drift.textContent = '–';
           if (this.noCamera || this.floorY === undefined) {
-            if (this.searching && !this.data.target.object3D.visible && !this.data.tap.object3D.visible) {
-              this.setState(this.noCamera ? 'sin acceso a la cámara: toca el suelo para colocar el zorro'
+            if (this.searching && !this.data.target.object3D.visible) {
+              this.setState(this.noCamera ? 'sin acceso a la cámara: no se puede leer el QR'
                 : 'mueve el móvil despacio apuntando al suelo', false);
             }
             return;
           }
-          if (this.searching && !this.data.target.object3D.visible && !this.data.tap.object3D.visible) {
-            this.setState('apunta al QR del centro del suelo, o toca para colocar el zorro', false);
+          if (this.searching && !this.data.target.object3D.visible) {
+            this.setState('apunta al QR del centro del suelo', false);
           }
           if (this.readback) this.finishReadback();
           if (this.requests.size || t - this.lastScan < (this.searching ? this.data.interval : 700)) return;
@@ -368,18 +368,13 @@
           obj.position.fromArray(center);
           obj.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
           obj.visible = true;
-          this.width = width;
-          document.querySelector('#print').object3D.scale.setScalar(width);
-          const stage = this.data.stage.object3D;
-          obj.add(stage);
-          stage.scale.setScalar(0.004 * width);
-          document.querySelector('#yaw').object3D.rotation.set(0, Math.PI / 2, 0); // as in the demo
-          this.data.tap.object3D.visible = false;
+          this.data.stage.object3D.scale.setScalar(0.004 * width);
           this.ui.qr.textContent = `colocado, suelo de ${(width * 100).toFixed(0)} cm`;
           this.setState('anclado al QR: ya puedes dejar de verlo', true);
+          this.el.emit('fox-placed');
           if (!this.anchors || !frame.createAnchor) return;
           for (const [anchor, entry] of this.anchors) {
-            if (entry.object3D === obj || entry.object3D === this.data.tap.object3D) {
+            if (entry.object3D === obj) {
               this.anchors.delete(anchor);
               anchor.delete();
             }
@@ -399,20 +394,6 @@
           let a = (Math.atan2(e.xAxis[2], e.xAxis[0]) - Math.atan2(x.z, x.x)) * 180 / Math.PI;
           a = Math.abs(((a + 540) % 360) - 180);
           this.ui.drift.textContent = `${d.toFixed(1)} cm, ${a.toFixed(1)}°`;
-        },
-        showOnTap() {
-          const tap = this.data.tap.object3D;
-          const stage = this.data.stage.object3D;
-          tap.add(stage);
-          stage.scale.setScalar(0.004);
-          // Face the viewer: camera position in #tap's frame, turned into a yaw (the model faces +Z).
-          const cam = this.el.camera.getWorldPosition(new THREE.Vector3());
-          tap.worldToLocal(cam);
-          document.querySelector('#yaw').object3D.rotation.set(0, Math.atan2(cam.x, cam.z), 0);
-          this.data.target.object3D.visible = false;
-          this.searching = false;
-          this.ui.qr.textContent = '–';
-          this.setState('colocado tocando: «Colocar con QR» para usar el QR', true);
         },
         rescan() {
           this.reset();
@@ -461,16 +442,26 @@
           ui.style.display = 'none';
         });
 
-        // Taps on the overlay buttons must not also place the fox.
+        // Taps on the overlay buttons must not also count as taps on the AR scene.
         for (const button of ui.querySelectorAll('button')) {
           button.addEventListener('beforexrselect', (e) => e.preventDefault());
         }
         document.querySelector('#rescan').addEventListener('click', () => scene.components['qr-anchor'].rescan());
-        const clips = ['Survey', 'Walk', 'Run'];
-        document.querySelector('#next-clip').addEventListener('click', (e) => {
-          const clip = clips[(clips.indexOf(model.getAttribute('animation-mixer').clip) + 1) % clips.length];
-          model.setAttribute('animation-mixer', 'clip', clip);
-          e.target.textContent = `Animación: ${clip}`;
+
+        // Narration: the play button shows once the fox is placed on the QR; the fox stays visible.
+        // Leaving AR stops it.
+        const narration = window.createNarration({
+          audio: document.querySelector('#narration'),
+          playButton: document.querySelector('#play'),
+          pauseButton: document.querySelector('#pause'),
+          stopButton: document.querySelector('#stop'),
+          subtitles: document.querySelector('#subtitles'),
+          model,
+        });
+        scene.addEventListener('fox-placed', () => narration.setAvailable(true));
+        scene.addEventListener('exit-vr', () => {
+          if (narration.state === 'playing' || narration.state === 'paused') narration.stop();
+          narration.setAvailable(false);
         });
         document.querySelector('#exit').addEventListener('click', () => scene.exitVR());
       })();

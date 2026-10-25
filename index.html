@@ -16,28 +16,6 @@
       html, body { margin: 0; height: 100%; overflow: hidden; }
       #tuning { position: fixed; top: 8px; left: 8px; z-index: 1000; padding: 4px 8px; border-radius: 4px;
                 font: 12px/1.4 monospace; color: #fff; background: rgba(0, 0, 0, 0.6); pointer-events: none; }
-      #controls { position: fixed; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom)); z-index: 1000;
-                  transform: translateX(-50%); display: flex; gap: 12px; }
-      #controls button { padding: 14px 24px; border: 0; border-radius: 999px; white-space: nowrap;
-                         font: 600 17px/1 system-ui, sans-serif; color: #fff; background: rgba(17, 24, 39, 0.85);
-                         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
-      #controls button[hidden] { display: none; }
-      /* Icons drawn with CSS: glyphs like U+25B6 render as colour emoji on some phones. */
-      #controls button::before { content: ""; display: inline-block; width: 0.75em; height: 0.75em;
-                                 margin-right: 0.5em; vertical-align: -0.05em; background: currentColor; }
-      #controls button[data-icon="play"]::before { clip-path: polygon(10% 0, 100% 50%, 10% 100%); }
-      #controls button[data-icon="pause"]::before {
-        background: linear-gradient(90deg, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
-      #controls button[data-icon="stop"]::before { clip-path: inset(6%); }
-      #controls button[data-icon="replay"]::before { border: 0.14em solid currentColor; border-right-color: transparent;
-                                                     border-radius: 50%; background: none; box-sizing: border-box; }
-      #subtitles { position: fixed; left: 50%; bottom: calc(104px + env(safe-area-inset-bottom)); z-index: 1000;
-                   transform: translateX(-50%); width: max-content; max-width: 90vw; text-align: center;
-                   white-space: pre-line; pointer-events: none; }
-      #subtitles[hidden] { display: none; }
-      /* Black box per line (clone repeats the padding on wrapped lines). */
-      #subtitles span { padding: 4px 10px; font: 500 18px/1.7 system-ui, sans-serif;
-                        color: #fff; background: #000; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
       #cardboard-toggle { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 12px; z-index: 1000;
                           padding: 10px 18px; border: 0; border-radius: 999px; font: 600 15px/1 system-ui, sans-serif;
                           color: #fff; background: rgba(17, 24, 39, 0.85); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
@@ -59,6 +37,11 @@
       #cardboard-calibrate { position: fixed; top: calc(60px + env(safe-area-inset-top)); right: 12px; z-index: 1000;
                              padding: 6px 12px; border-radius: 999px; font: 500 13px/1 system-ui, sans-serif;
                              color: #fff; background: rgba(17, 24, 39, 0.7); text-decoration: none; }
+      /* Link to the WebXR (ARCore) page, under "Calibrar gafas"; shown only where immersive-ar works. */
+      #ar-mode { position: fixed; top: calc(100px + env(safe-area-inset-top)); right: 12px; z-index: 1000;
+                 padding: 6px 12px; border-radius: 999px; font: 500 13px/1 system-ui, sans-serif;
+                 color: #fff; background: rgba(17, 24, 39, 0.7); text-decoration: none; }
+      #ar-mode[hidden] { display: none; }
       #snap-panel { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 1000;
                     display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 6px 8px;
                     max-width: 420px; margin: 0 auto; padding: 10px 12px; border-radius: 12px; color: #fff;
@@ -70,10 +53,12 @@
       #snap-panel .wide { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
       #snap-panel .wide button { width: auto; padding: 0 14px; font-size: 14px; }
       body.cardboard #snap-panel,
-      body.cardboard #controls, body.cardboard #subtitles, body.cardboard #cardboard-toggle, body.cardboard #cardboard-calibrate,
+      body.cardboard #controls, body.cardboard #subtitles, body.cardboard #cardboard-toggle, body.cardboard #cardboard-calibrate, body.cardboard #ar-mode,
       body.cardboard .mindar-ui-overlay, body.cardboard #tuning { display: none !important; }
     </style>
+    <link rel="stylesheet" href="narration.css" />
     <script src="cardboard-calibration.js"></script>
+    <script src="narration.js"></script>
     <script>
       // Temporary: no narration; the fox is always shown and #snap-panel tunes pose-snap on the phone.
       // Set to false to bring the narration back.
@@ -242,7 +227,7 @@
             const secs = Math.max(1, Math.ceil((this.countdownEnd - performance.now()) / 1000));
             out.push({ lines: ['Coloca el móvil en las gafas', `Empieza en ${secs}`], dy: 0.2 });
           } else if (n.state === 'ended' && this.started) out.push({ lines: ['Fin'], dy: 0 });
-          else if (!n.floorVisible && n.state !== 'playing') out.push({ lines: ['Apunta al suelo'], dy: 0 });
+          else if (!n.available && n.state !== 'playing') out.push({ lines: ['Apunta al suelo'], dy: 0 });
           return out;
         },
         drawText({ lines, dy }, cx, cy, H, zoom) {
@@ -315,6 +300,7 @@
     </div>
     <button id="cardboard-toggle" type="button">Gafas</button>
     <a id="cardboard-calibrate" href="calibrate.html">Calibrar gafas</a>
+    <a id="ar-mode" href="webxr-test.html" hidden>Modo AR</a>
     <canvas id="stereo"></canvas>
     <button id="cardboard-exit" type="button" aria-label="Salir del modo gafas"></button>
 
@@ -369,6 +355,10 @@
           document.querySelector('#cardboard-calibrate').hidden = true;
           return;
         }
+        // WebXR AR needs Chrome for Android with ARCore: not in the APK's WebView, iPhone or desktop.
+        navigator.xr?.isSessionSupported('immersive-ar').then((ok) => {
+          document.querySelector('#ar-mode').hidden = !ok;
+        }, () => {});
         const enable = () => scene.setAttribute('cardboard', '');
         toggle.addEventListener('click', async () => {
           try {
@@ -396,93 +386,26 @@
     </script>
 
     <script>
-      // Narration. States: idle (nothing started), playing, paused, ended.
-      // - idle/ended: "Reproducir"/"Repetir" shows while the floor is detected. Pressing it (a user gesture,
-      //   which mobile browsers require to play audio) shows the fox running and plays the narration.
-      // - playing/paused: Pause/Continue and Stop show even if the floor is lost, since the audio keeps going.
-      //   Pause also freezes the fox; Stop rewinds and hides it, back to idle.
-      // - ended: the fox idles (Survey) and the start button offers a replay.
-      // Subtitles come from the <track> (WebVTT); the browser picks the active cue from the audio time and
-      // we draw it ourselves (track mode "hidden") so it looks the same everywhere.
+      // Narration (narration.js). Here the fox stays hidden until it starts and is hidden again by Stop;
+      // the play button shows while the floor is detected.
       (() => {
         if (new URLSearchParams(location.search).has('debug') || window.SNAP_TUNING) return;
         const target = document.querySelector('#target');
         const anchor = document.querySelector('#anchor');
-        const model = anchor.querySelector('a-gltf-model');
-        const audio = document.querySelector('#narration');
-        const playButton = document.querySelector('#play');
-        const pauseButton = document.querySelector('#pause');
-        const stopButton = document.querySelector('#stop');
-        const subtitles = document.querySelector('#subtitles');
-        const track = audio.querySelector('track').track;
-        let visible = false;
-        let state = 'idle';
-
-        const showSubtitle = () => {
-          const cue = track.activeCues?.[0];
-          const active = state === 'playing' || state === 'paused';
-          subtitles.hidden = !(cue && active);
-          subtitles.firstElementChild.textContent = cue ? cue.text : '';
-        };
-        track.mode = 'hidden';
-        track.addEventListener('cuechange', showSubtitle);
-
-        const setState = (next) => {
-          state = next;
-          showSubtitle();
-          const active = state === 'playing' || state === 'paused';
-          playButton.hidden = active || !visible;
-          playButton.dataset.icon = state === 'ended' ? 'replay' : 'play';
-          playButton.textContent = state === 'ended' ? 'Repetir narración' : 'Reproducir narración';
-          pauseButton.hidden = stopButton.hidden = !active;
-          pauseButton.dataset.icon = state === 'paused' ? 'play' : 'pause';
-          pauseButton.textContent = state === 'paused' ? 'Continuar' : 'Pausa';
-          model.setAttribute('animation-mixer', 'timeScale', state === 'paused' ? 0 : 1);
-        };
-        target.addEventListener('targetFound', () => { visible = true; setState(state); });
-        target.addEventListener('targetLost', () => { visible = false; setState(state); });
-
-        // Returns play()'s promise: without a recent user gesture on this page the browser may refuse to
-        // play, which can happen when the headset mode starts it on its own.
-        const start = () => {
-          anchor.setAttribute('visible', true);
-          model.setAttribute('animation-mixer', 'clip', 'Run');
-          audio.currentTime = 0;
-          setState('playing');
-          return audio.play().catch((e) => {
-            anchor.setAttribute('visible', false);
-            setState('idle');
-            throw e;
-          });
-        };
-        const pauseOrResume = () => {
-          if (state === 'paused') {
-            audio.play();
-            setState('playing');
-          } else {
-            audio.pause();
-            setState('paused');
-          }
-        };
-        playButton.addEventListener('click', start);
-        pauseButton.addEventListener('click', pauseOrResume);
-        stopButton.addEventListener('click', () => {
-          audio.pause();
-          audio.currentTime = 0;
-          anchor.setAttribute('visible', false);
-          setState('idle');
+        const narration = window.createNarration({
+          audio: document.querySelector('#narration'),
+          playButton: document.querySelector('#play'),
+          pauseButton: document.querySelector('#pause'),
+          stopButton: document.querySelector('#stop'),
+          subtitles: document.querySelector('#subtitles'),
+          model: anchor.querySelector('a-gltf-model'),
+          onStart: () => anchor.setAttribute('visible', true),
+          onStop: () => anchor.setAttribute('visible', false),
         });
-        audio.addEventListener('ended', () => {
-          model.setAttribute('animation-mixer', 'clip', 'Survey');
-          setState('ended');
-        });
-
+        target.addEventListener('targetFound', () => narration.setAvailable(true));
+        target.addEventListener('targetLost', () => narration.setAvailable(false));
         // Used by the headset mode, where the on-screen buttons cannot be reached: it starts on its own.
-        window.narration = {
-          start,
-          get state() { return state; },
-          get floorVisible() { return visible; },
-        };
+        window.narration = narration;
       })();
     </script>
 

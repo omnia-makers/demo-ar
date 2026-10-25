@@ -27,7 +27,9 @@ Al detectar el suelo aparece el botón *Reproducir narración*. Al pulsarlo apar
 `public/audio/zorro-y-erizo.mp3`. Mientras suena hay dos botones: *Pausa/Continuar* (también congela al zorro)
 y *Detener* (vuelve al principio y oculta al zorro). Si se pierde el suelo, el audio y los botones siguen.
 Al acabar, el zorro pasa a la animación `Survey` y el botón ofrece repetir. El botón es necesario: los navegadores móviles solo reproducen audio tras
-un toque del usuario. Para cambiar la narración basta con sustituir el MP3 (o el `src` de `<audio id="narration">`).
+un toque del usuario. Para cambiar la narración basta con sustituir el MP3 (o el `src` de `<audio id="narration">`
+en `index.html` y `public/webxr-test.html`). La lógica y los estilos están en `public/narration.js` y
+`public/narration.css`, compartidos con el modo AR (WebXR), donde el botón aparece al colocar el zorro.
 
 Subtítulos: `public/audio/zorro-y-erizo.vtt` (WebVTT, texto plano). Cada bloque es `inicio --> fin` en
 `minutos:segundos.milésimas` y debajo el texto (un salto de línea dentro del bloque se respeta en pantalla).
